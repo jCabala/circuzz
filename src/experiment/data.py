@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from dataclasses import field
 
+from backends.circom.picus import ConstraintLevel
+
 @dataclass
 class DataEntry():
 
@@ -37,6 +39,12 @@ class DataEntry():
     c2_assumptions     : int
     c2_input_signals   : int
     c2_output_signals  : int
+
+    # 
+    # Picus Specific Entries
+    # 
+    picus_program_generation_reruns : int | None = None # How many times the circuit had to be regenerated to be properly constrained
+    picus_transformed_constraint_level: ConstraintLevel | None = None
 
     #
     # Circom

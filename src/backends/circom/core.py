@@ -3,6 +3,8 @@ from random import Random
 import time
 from typing import Any
 
+from backends.circom.config import OracleType
+from backends.circom.picus import generate_picus_constrained_circuit, run_picus_check
 from experiment.data import DataEntry, TestResult
 
 from circuzz.common.metamorphism import MetamorphicCircuitPair
@@ -20,7 +22,96 @@ from .utils import random_circom_curve
 
 logger = get_color_logger()
 
+
 def run_circom_metamorphic_tests \
+    ( seed: float
+    , working_dir: Path
+    , config: Config
+    , online_tuning: OnlineTuning
+    ) -> TestResult:
+
+    match config.backend.circom.oracle_type:
+        case OracleType.CIRCUZZ:
+            return run_circom_metamorphic_tests_with_circuzz_oracle(seed, working_dir, config, online_tuning)
+        case OracleType.PICUS:
+            return run_circom_metamorphic_tests_with_picus_oracle(seed, working_dir, config, online_tuning)
+        case _:
+            raise NotImplementedError(f"unimplemented circom oracle type '{config.backend.circom.oracle_type}'")
+
+def run_circom_metamorphic_tests_with_picus_oracle \
+    ( seed: float
+    , working_dir: Path
+    , config: Config
+    , online_tuning: OnlineTuning
+    ) -> TestResult:
+        start_time = time.time()
+        logger.info(f"circom metamorphic testing, seed: {seed}, working-dir: {working_dir}, oracle: PICUS")
+        #
+        # Start Of Test
+        #
+
+        rng = Random(seed)
+        ir_gen_seed = rng.randint(1000000000, 9999999999)
+        ir_tf_seed = rng.randint(1000000000, 9999999999)
+        test_seed = rng.randint(1000000000, 9999999999)
+        kind = random_weighted_metamorphic_kind(rng, config.ir.rewrite.weakening_probability)
+        curve = random_circom_curve(rng)
+        prime = curve_to_prime(curve)
+
+        ir_generation_start = time.time()
+        ir, num_tries = generate_picus_constrained_circuit(prime, False, config.ir, ir_gen_seed)
+        
+        ir.name = f"Circuit_{curve}"
+        ir_generation_time = time.time() - ir_generation_start
+
+        ir_rewrite_start = time.time()
+        POIs, ir_tf = generate_metamorphic_related_circuit(kind, ir, prime, config.ir, ir_tf_seed)
+        postfix = "_eq" if kind == MetamorphicKind.EQUAL else "_wk"
+        ir_tf.name = f"{ir.name}{postfix}"
+        ir_rewrite_time = time.time() - ir_rewrite_start
+
+        metamorphic_pair = MetamorphicCircuitPair(kind, ir, ir_tf, POIs)
+    
+        picus_result = run_picus_check(ir_tf)
+
+        test_time = time.time() - start_time
+
+        return TestResult([
+             DataEntry \
+                ( tool = "circom"
+                , test_time = test_time
+                , seed = seed
+                , curve = curve.value
+                , oracle = kind.value
+                , iteration = 0
+                , error = "I AM AN ERROR"
+                , ir_generation_seed = ir_gen_seed
+                , ir_generation_time = ir_generation_time
+                , ir_rewrite_seed = ir_tf_seed
+                , ir_rewrite_time = ir_rewrite_time
+                , ir_rewrite_rules = [POI.rule.name for POI in POIs]
+                , c1_node_size = ir.node_size()
+                , c1_assignments = len(ir.assignments())
+                , c1_assertions = len(ir.assertions())
+                , c1_assumptions = len(ir.assumptions())
+                , c1_input_signals = len(ir.inputs)
+                , c1_output_signals = len(ir.outputs)
+                , c2_node_size = ir_tf.node_size()
+                , c2_assignments = len(ir_tf.assignments())
+                , c2_assertions = len(ir_tf.assertions())
+                , c2_assumptions = len(ir_tf.assumptions())
+                , c2_input_signals = len(ir_tf.inputs)
+                , c2_output_signals = len(ir_tf.outputs)
+                # Picus specific data
+                , picus_constraint_level = picus_result.constraint_level.value
+                , picus_circuit_generation_tries = num_tries
+             )
+        ])
+
+
+    
+
+def run_circom_metamorphic_tests_with_circuzz_oracle \
     ( seed: float
     , working_dir: Path
     , config: Config
@@ -33,7 +124,7 @@ def run_circom_metamorphic_tests \
     """
 
     start_time = time.time()
-    logger.info(f"circom metamorphic testing, seed: {seed}, working-dir: {working_dir}")
+    logger.info(f"circom metamorphic testing, seed: {seed}, working-dir: {working_dir}, oracle: CIRCUZZ")
 
     #
     # Start Of Test
