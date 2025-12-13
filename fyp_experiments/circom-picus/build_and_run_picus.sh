@@ -22,4 +22,11 @@ podman build \
 
 echo "Build finished. Running container from image '${IMAGE_NAME}'."
 # Run an interactive shell in the built image
-podman run -it --rm "${IMAGE_NAME}" bash
+
+# Don't run if the flag --no-run is provided
+if [[ "${3:-}" == "--no-run" ]]; then
+    echo "Skipping container run as per --no-run flag."
+    exit 0
+fi
+
+podman run -it "${IMAGE_NAME}" bash

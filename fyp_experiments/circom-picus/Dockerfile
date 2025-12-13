@@ -11,11 +11,19 @@ RUN cd /circuzz/circom && \
 	cargo install --path circom && \
 	rm -rf /circuzz/circom
 
+
 # --- Stage 1: final image based on the Picus base image ---
 FROM docker.io/veridise/picus:base
 
 # re-declare the build-arg so users can pass it while building (optional)
 ARG CIRCOM_COMMIT
+
+# install Python 3.11 to meet cli.py requirements
+RUN apt-get update && \
+	apt-get install -y python3.11 && \
+	update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
+	apt-get clean && \
+	rm -rf /var/lib/apt/lists/*
 
 # copy circom binary and supporting files from the build stage
 # cargo installs binaries to /root/.cargo/bin by default in these images

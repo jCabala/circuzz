@@ -8,14 +8,14 @@
     },
 
     "circom": {
-        "oracle_type" : "picus",
         "boundary_input_probability" : 0.1,
         "test_iterations"  : 2,
 
         "likelihood_cpp_witness_generation"       : 0.2,
         "likelihood_snark_witness_check"          : 0,
 
-        "constraint_assignment_probability" : 0.5
+        "constraint_assignment_probability" : 1,
+        "oracle_type" : "picus"
     },
 
     "ir" : {
@@ -41,12 +41,12 @@
             "ternary_probability_weight"  : 1,
 
             "max_expression_depth"           : 4,
-            "min_number_of_assertions"       : 0,
-            "max_number_of_assertions"       : 2,
-            "min_number_of_input_variables"  : 0,
-            "max_number_of_input_variables"  : 2,
-            "min_number_of_output_variables" : 0,
-            "max_number_of_output_variables" : 2,
+            "min_number_of_assertions"       : 1,
+            "max_number_of_assertions"       : 4,
+            "min_number_of_input_variables"  : 1,
+            "max_number_of_input_variables"  : 4,
+            "min_number_of_output_variables" : 1,
+            "max_number_of_output_variables" : 4,
 
             "max_exponent_value" : 4,
             "boundary_value_probability" : 0.25
@@ -406,7 +406,8 @@
                     , "match" : "(!(?a == ?b))"
                     , "rewrite" : "(?a != ?b)"
                     }
-                ]
+                ],
+                "weakening" : []
             }
         }
     }

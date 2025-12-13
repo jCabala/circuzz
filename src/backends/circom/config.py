@@ -6,6 +6,7 @@ class OracleType(StrEnum):
     CIRCUZZ = "circuzz"
     PICUS = "picus"
 
+    @classmethod
     def from_str(cls, value: str) -> 'OracleType':
         match value:
             case "circuzz":

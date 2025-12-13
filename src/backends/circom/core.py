@@ -4,7 +4,7 @@ import time
 from typing import Any
 
 from backends.circom.config import OracleType
-from backends.circom.picus import generate_picus_constrained_circuit, run_picus_check
+from backends.circom.picus import ConstraintLevel, generate_picus_constrained_circom_code, ir_to_circom_code, run_picus_check
 from experiment.data import DataEntry, TestResult
 
 from circuzz.common.metamorphism import MetamorphicCircuitPair
@@ -30,13 +30,13 @@ def run_circom_metamorphic_tests \
     , online_tuning: OnlineTuning
     ) -> TestResult:
 
-    match config.backend.circom.oracle_type:
+    match config.circom.oracle_type:
         case OracleType.CIRCUZZ:
             return run_circom_metamorphic_tests_with_circuzz_oracle(seed, working_dir, config, online_tuning)
         case OracleType.PICUS:
             return run_circom_metamorphic_tests_with_picus_oracle(seed, working_dir, config, online_tuning)
         case _:
-            raise NotImplementedError(f"unimplemented circom oracle type '{config.backend.circom.oracle_type}'")
+            raise NotImplementedError(f"unimplemented circom oracle type '{config.circom.oracle_type}'")
 
 def run_circom_metamorphic_tests_with_picus_oracle \
     ( seed: float
@@ -53,26 +53,29 @@ def run_circom_metamorphic_tests_with_picus_oracle \
         rng = Random(seed)
         ir_gen_seed = rng.randint(1000000000, 9999999999)
         ir_tf_seed = rng.randint(1000000000, 9999999999)
-        test_seed = rng.randint(1000000000, 9999999999)
         kind = random_weighted_metamorphic_kind(rng, config.ir.rewrite.weakening_probability)
         curve = random_circom_curve(rng)
         prime = curve_to_prime(curve)
 
         ir_generation_start = time.time()
-        ir, num_tries = generate_picus_constrained_circuit(prime, False, config.ir, ir_gen_seed)
+        ir, circom_code, num_tries = generate_picus_constrained_circom_code(prime, False, config.ir, ir_gen_seed)
         
-        ir.name = f"Circuit_{curve}"
+        logger.info(f"Generated PICUS constrained circom code after {num_tries} tries.")
+        logger.info("Original, PICUS Constrained Circom Code:")
+        logger.info(circom_code)
+
         ir_generation_time = time.time() - ir_generation_start
 
         ir_rewrite_start = time.time()
         POIs, ir_tf = generate_metamorphic_related_circuit(kind, ir, prime, config.ir, ir_tf_seed)
-        postfix = "_eq" if kind == MetamorphicKind.EQUAL else "_wk"
-        ir_tf.name = f"{ir.name}{postfix}"
-        ir_rewrite_time = time.time() - ir_rewrite_start
+        circom_code_tf = ir_to_circom_code(ir_tf)
 
-        metamorphic_pair = MetamorphicCircuitPair(kind, ir, ir_tf, POIs)
+        logger.info("Transformed Circom Code:")
+        logger.info(circom_code_tf)
+
+        ir_rewrite_time = time.time() - ir_rewrite_start
     
-        picus_result = run_picus_check(ir_tf)
+        picus_result = run_picus_check(circom_code_tf)
 
         test_time = time.time() - start_time
 
@@ -84,7 +87,7 @@ def run_circom_metamorphic_tests_with_picus_oracle \
                 , curve = curve.value
                 , oracle = kind.value
                 , iteration = 0
-                , error = "I AM AN ERROR"
+                , error = "YES" #None if picus_result.constraint_level == ConstraintLevel.FULLY_CONSTRAINED else "PICUS detected under-constrained circuit"
                 , ir_generation_seed = ir_gen_seed
                 , ir_generation_time = ir_generation_time
                 , ir_rewrite_seed = ir_tf_seed
@@ -103,8 +106,8 @@ def run_circom_metamorphic_tests_with_picus_oracle \
                 , c2_input_signals = len(ir_tf.inputs)
                 , c2_output_signals = len(ir_tf.outputs)
                 # Picus specific data
-                , picus_constraint_level = picus_result.constraint_level.value
-                , picus_circuit_generation_tries = num_tries
+                , picus_program_generation_reruns = num_tries
+                , picus_transformed_constraint_level = picus_result.constraint_level
              )
         ])
 
