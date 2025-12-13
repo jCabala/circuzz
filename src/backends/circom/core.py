@@ -1,7 +1,6 @@
 from pathlib import Path
 from random import Random
 import time
-from typing import Any
 
 from backends.circom.config import OracleType
 from backends.circom.picus import ConstraintLevel, generate_picus_constrained_circom_code, ir_to_circom_code, run_picus_check
@@ -23,24 +22,38 @@ from .utils import random_circom_curve
 logger = get_color_logger()
 
 
+def save_error_metamorphic_circuit_pair(save_path: Path, circom_code: str, circom_code_tf: str):
+    error_dir = save_path / "errors"
+
+    num_of_subdirs = len(list(error_dir.glob("error_*")))
+    current_error_dir = error_dir / f"error_{num_of_subdirs + 1}"
+    current_error_dir.mkdir(parents=True, exist_ok=True)
+    with open(current_error_dir / "circuit.circom", "w") as f:
+        f.write(circom_code)
+    with open(current_error_dir / "circuit_transformed.circom", "w") as f:
+        f.write(circom_code_tf)
+
+
 def run_circom_metamorphic_tests \
     ( seed: float
     , working_dir: Path
+    , report_dir: Path
     , config: Config
     , online_tuning: OnlineTuning
     ) -> TestResult:
 
     match config.circom.oracle_type:
         case OracleType.CIRCUZZ:
-            return run_circom_metamorphic_tests_with_circuzz_oracle(seed, working_dir, config, online_tuning)
+            return run_circom_metamorphic_tests_with_circuzz_oracle(seed, working_dir, report_dir, config, online_tuning)
         case OracleType.PICUS:
-            return run_circom_metamorphic_tests_with_picus_oracle(seed, working_dir, config, online_tuning)
+            return run_circom_metamorphic_tests_with_picus_oracle(seed, working_dir, report_dir, config, online_tuning)
         case _:
             raise NotImplementedError(f"unimplemented circom oracle type '{config.circom.oracle_type}'")
 
 def run_circom_metamorphic_tests_with_picus_oracle \
     ( seed: float
     , working_dir: Path
+    , report_dir: Path
     , config: Config
     , online_tuning: OnlineTuning
     ) -> TestResult:
@@ -77,6 +90,11 @@ def run_circom_metamorphic_tests_with_picus_oracle \
     
         picus_result = run_picus_check(circom_code_tf)
 
+        # Save circuits if error detected
+        has_error = picus_result.constraint_level == ConstraintLevel.UNDER_CONSTRAINED
+        if has_error:
+            save_error_metamorphic_circuit_pair(report_dir, circom_code, circom_code_tf)
+
         test_time = time.time() - start_time
 
         return TestResult([
@@ -87,7 +105,7 @@ def run_circom_metamorphic_tests_with_picus_oracle \
                 , curve = curve.value
                 , oracle = kind.value
                 , iteration = 0
-                , error = "YES" #None if picus_result.constraint_level == ConstraintLevel.FULLY_CONSTRAINED else "PICUS detected under-constrained circuit"
+                , error = f"PICUS: {picus_result.constraint_level}" if has_error else None
                 , ir_generation_seed = ir_gen_seed
                 , ir_generation_time = ir_generation_time
                 , ir_rewrite_seed = ir_tf_seed
@@ -117,6 +135,7 @@ def run_circom_metamorphic_tests_with_picus_oracle \
 def run_circom_metamorphic_tests_with_circuzz_oracle \
     ( seed: float
     , working_dir: Path
+    , report_dir: Path
     , config: Config
     , online_tuning: OnlineTuning
     ) -> TestResult:

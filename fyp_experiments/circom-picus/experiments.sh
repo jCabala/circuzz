@@ -29,7 +29,7 @@ WAIT_BETWEEN=2
 
 # Timeout settings
 T_SECONDS=30
-T_MINUTES=0
+T_MINUTES=5
 T_HOURS=0
 
 # Configs
@@ -52,7 +52,6 @@ cd $SCRIPT_DIR
 
 # create folder structure
 mkdir -p $OBJ_DIR
-mkdir -p $LOG_DIR
 
 # setup tmp file
 mkdir -p $TMP_DIR
