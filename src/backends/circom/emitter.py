@@ -6,9 +6,10 @@ from .nodes import *
 
 class EmitVisitor():
 
-    def __init__(self):
+    def __init__(self, constrain_equality_assertions: bool = False):
         self.indent = 0
         self.buffer = io.StringIO()
+        self.constrain_equality_assertions = constrain_equality_assertions
 
     def emit(self, node: ASTNode) -> str:
         self.indent = 0
@@ -192,9 +193,31 @@ class EmitVisitor():
         self.visit_basic_block(node.block)
 
     def visit_assert_statement(self, node: AssertStatement):
+        if self.constrain_equality_assertions and self.is_equality_assertion(node):
+            self.buffer.write(self.current_indent)
+            self.visit_equality_assertion_as_constraint(node)
+            return
+            
         self.buffer.write(self.current_indent + "assert(")
         self.visit(node.condition)
         self.buffer.write(");\n")
+
+    def is_equality_assertion(self, node: AssertStatement) -> bool:
+        match node.condition:
+            case BinaryExpression():
+                return node.condition.operator == Operator.EQU
+            case _:
+                return False
+            
+    def visit_equality_assertion_as_constraint(self, node: AssertStatement):
+        match node.condition:
+            case BinaryExpression():
+                self.visit(node.condition.lhs)
+                self.buffer.write(" === ")
+                self.visit(node.condition.rhs)
+                self.buffer.write(";\n")
+            case _:
+                raise NotImplementedError("Expected BinaryExpression for equality assertion")
 
     def visit_log_statement(self, node: LogStatement):
         self.buffer.write(self.current_indent + "log(")

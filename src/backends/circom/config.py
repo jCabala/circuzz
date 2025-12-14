@@ -37,8 +37,10 @@ class CircomConfig():
     constraint_assignment_probability: float
 
     # Oracle type
-    oracle_type : OracleType = OracleType.CIRCUZZ
+    oracle_type : OracleType
 
+    # Constrain equality assertions '===' instead of '=='
+    constrain_equality_assertions : bool = False
 
     @classmethod
     def from_dict(cls, value: dict[str, str]) -> 'CircomConfig':
@@ -49,6 +51,7 @@ class CircomConfig():
         likelihood_snark_witness_check = float(value.get("likelihood_snark_witness_check", 0))
         constraint_assignment_probability = float(value.get("constraint_assignment_probability", 0.5))
         oracle_type = OracleType.from_str(value.get("oracle_type", "circuzz"))
+        constrain_equality_assertions = bool(value.get("constrain_equality_assertions", False))
 
         return CircomConfig \
             ( boundary_input_probability = boundary_input_probability
@@ -57,4 +60,5 @@ class CircomConfig():
             , likelihood_snark_witness_check = likelihood_snark_witness_check
             , constraint_assignment_probability = constraint_assignment_probability
             , oracle_type = oracle_type
+            , constrain_equality_assertions = constrain_equality_assertions
             )

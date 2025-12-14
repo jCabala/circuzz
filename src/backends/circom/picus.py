@@ -44,12 +44,13 @@ def ir_to_circom_ast(
 
 def ir_to_circom_code(
     circuit: Circuit,
+    constrain_equality_assertions: bool = False,
 ) -> str:
     """Convert an IR `Circuit` to Circom source code string."""
     circom_ast = ir_to_circom_ast(
         circuit,
     )
-    emitter = EmitVisitor()
+    emitter = EmitVisitor(constrain_equality_assertions=constrain_equality_assertions)
     return emitter.emit(circom_ast)
 
 def run_picus_check(circom_code: str) -> PICUSCheckResult:
@@ -85,6 +86,7 @@ def generate_picus_constrained_circom_code \
     , exclude_prime: bool
     , config: IRConfig
     , seed: int
+    , constrain_equality_assertions: bool = False
     ) -> tuple[Circuit, str, int]:
     """
     Uses normal random circuit generation but ensures the circuit is
@@ -98,7 +100,7 @@ def generate_picus_constrained_circom_code \
     num_tries = 0
     while not circuit or not is_properly_constrained(circom_code):
         circuit = generate_random_circuit(curve, exclude_prime, config, seed)
-        circom_code = ir_to_circom_code(circuit)
+        circom_code = ir_to_circom_code(circuit, constrain_equality_assertions=constrain_equality_assertions)
         seed += 1  # Change seed to get a different circuit next time if needed.
         num_tries += 1
 

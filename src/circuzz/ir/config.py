@@ -7,6 +7,7 @@ from .rewrite.rules import RewriteRule
 
 class GeneratorKind(StrEnum):
     ARITHMETIC = "arithmetic" # see ArithmeticCircuitGenerator
+    QUADRATIC  = "quadratic"  # see QuadraticCircuitGenerator
     BOOLEAN    = "boolean"    # see BooleanCircuitGenerator
 
 @dataclass(frozen=True)

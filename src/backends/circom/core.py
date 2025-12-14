@@ -44,8 +44,12 @@ def run_circom_metamorphic_tests \
 
     match config.circom.oracle_type:
         case OracleType.CIRCUZZ:
+            if config.circom.constrain_equality_assertions:
+                logger.warning("circom oracle type 'CIRCUZZ' does not support equality assertion constraining. Ignoring the option.")
             return run_circom_metamorphic_tests_with_circuzz_oracle(seed, working_dir, report_dir, config, online_tuning)
         case OracleType.PICUS:
+            if config.circom.constrain_equality_assertions:
+                logger.info("enabling equality assertion constraining for PICUS oracle")
             return run_circom_metamorphic_tests_with_picus_oracle(seed, working_dir, report_dir, config, online_tuning)
         case _:
             raise NotImplementedError(f"unimplemented circom oracle type '{config.circom.oracle_type}'")
@@ -69,9 +73,10 @@ def run_circom_metamorphic_tests_with_picus_oracle \
         kind = random_weighted_metamorphic_kind(rng, config.ir.rewrite.weakening_probability)
         curve = random_circom_curve(rng)
         prime = curve_to_prime(curve)
+        constrain_equality_assertions = config.circom.constrain_equality_assertions
 
         ir_generation_start = time.time()
-        ir, circom_code, num_tries = generate_picus_constrained_circom_code(prime, False, config.ir, ir_gen_seed)
+        ir, circom_code, num_tries = generate_picus_constrained_circom_code(prime, False, config.ir, ir_gen_seed, constrain_equality_assertions=constrain_equality_assertions)
         
         logger.info(f"Generated PICUS constrained circom code after {num_tries} tries.")
         logger.info("Original, PICUS Constrained Circom Code:")
@@ -81,7 +86,7 @@ def run_circom_metamorphic_tests_with_picus_oracle \
 
         ir_rewrite_start = time.time()
         POIs, ir_tf = generate_metamorphic_related_circuit(kind, ir, prime, config.ir, ir_tf_seed)
-        circom_code_tf = ir_to_circom_code(ir_tf)
+        circom_code_tf = ir_to_circom_code(ir_tf, constrain_equality_assertions=constrain_equality_assertions)
 
         logger.info("Transformed Circom Code:")
         logger.info(circom_code_tf)

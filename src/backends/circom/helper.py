@@ -736,9 +736,9 @@ def run_metamorphic_tests \
     # start a new experiment
     rng = Random(seed)
 
-    # check that only arithmetic generators are used!
+    # check that only arithmetic or quadratic generators are used!
     generatorKind = config.ir.generation.generator
-    if generatorKind != GeneratorKind.ARITHMETIC:
+    if generatorKind not in [GeneratorKind.ARITHMETIC, GeneratorKind.QUADRATIC]:
         raise NotImplementedError(f"circom is unable to deal with '{generatorKind}' generator!")
 
     # sanity checks
