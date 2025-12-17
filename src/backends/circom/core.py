@@ -176,6 +176,11 @@ def run_circom_metamorphic_tests_with_circuzz_oracle \
     circom_result = run_metamorphic_tests(metamorphic_pair, test_seed, curve, working_dir, config, online_tuning)
     test_time = time.time() - start_time
 
+    # Save circuits if error detected (code already stored in result)
+    has_error = any(iteration.error is not None for iteration in circom_result.iterations)
+    if has_error and circom_result.original_code and circom_result.transformed_code:
+        save_error_metamorphic_circuit_pair(report_dir, circom_result.original_code, circom_result.transformed_code)
+
     #
     # Report Result
     #

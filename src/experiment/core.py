@@ -36,11 +36,11 @@ def worker \
             case ZKPLanguage.CIRCOM:
                 test_result = run_circom_metamorphic_tests(seed, working_dir, report_dir, config, online_tuning)
             case ZKPLanguage.NOIR:
-                test_result = run_noir_metamorphic_tests(seed, working_dir, config, online_tuning)
+                test_result = run_noir_metamorphic_tests(seed, working_dir, report_dir, config, online_tuning)
             case ZKPLanguage.CORSET:
-                test_result = run_corset_metamorphic_tests(seed, working_dir, config, online_tuning)
+                test_result = run_corset_metamorphic_tests(seed, working_dir, report_dir, config, online_tuning)
             case ZKPLanguage.GNARK:
-                test_result = run_gnark_metamorphic_tests(seed, working_dir, config, online_tuning)
+                test_result = run_gnark_metamorphic_tests(seed, working_dir, report_dir, config, online_tuning)
             case _:
                 raise NotImplementedError(f"unexpected ZKP language {config.zkp_language}")
     except Exception as e: # catch any exception that is not caught so far

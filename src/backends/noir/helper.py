@@ -100,6 +100,8 @@ class TestIteration():
 @dataclass
 class NoirResult():
     iterations : list[TestIteration] = field(default_factory=list)
+    original_code : str | None = None
+    transformed_code : str | None = None
 
 # ================================================================
 #                           Helper
@@ -193,7 +195,7 @@ def check_for_ignored_errors(iteration: TestIteration, c1_exec: ExecStatus, c2_e
 #                  IR to Noir and Project Setup
 # ================================================================
 
-def prepare_project(root: Path, prefix: str, circuit: Circuit, curve: CurvePrime) -> Path:
+def prepare_project(root: Path, prefix: str, circuit: Circuit, curve: CurvePrime) -> tuple[Path, str]:
     """
     Generates a default noir project for a given circuit.
     First the circuit is transformed into noir source code.
@@ -206,6 +208,7 @@ def prepare_project(root: Path, prefix: str, circuit: Circuit, curve: CurvePrime
             |__ src/
                  |__ main.noir
     ```
+    Returns: (project_path, noir_source_code)
     """
 
     working_dir = root / prefix
@@ -243,7 +246,7 @@ def prepare_project(root: Path, prefix: str, circuit: Circuit, curve: CurvePrime
     with open(main_nr, 'w') as file_handler:
         file_handler.write(noir_source)
 
-    return working_dir
+    return working_dir, noir_source
 
 
 # ================================================================
@@ -449,10 +452,12 @@ def run_metamorphic_tests \
     # prepare noir projects
     clean_or_create_dir(working_dir)
     logger.info(f"cleaning working dir: {working_dir}")
-    project_orig = prepare_project(working_dir, "origin", circuit_orig, curve)
-    project_tf = prepare_project(working_dir, "transformed", circuit_tf, curve)
+    project_orig, noir_code_orig = prepare_project(working_dir, "origin", circuit_orig, curve)
+    project_tf, noir_code_tf = prepare_project(working_dir, "transformed", circuit_tf, curve)
 
     noir_result = NoirResult()
+    noir_result.original_code = noir_code_orig
+    noir_result.transformed_code = noir_code_tf
 
     # main loop running for each input
     for _ in range(config.noir.test_iterations):
