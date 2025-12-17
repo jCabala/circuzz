@@ -257,7 +257,12 @@ class CircomManager():
 
         self.online_tuning = online_tuning
 
-    def setup(self, circuit: Circuit, constraint_assignment_probability: float, rng: Random):
+    def setup \
+        (self
+        , circuit: Circuit
+        , constraint_assignment_probability: float
+        , constrain_equality_assertions: bool
+        , rng: Random):
         self.circuit = circuit
         self.error = None
 
@@ -268,7 +273,7 @@ class CircomManager():
         circom = IR2CircomVisitor(constraint_assignment_probability, rng).transform(circuit)
 
         # write circuit.circom source file
-        circom_source = EmitVisitor().emit(circom)
+        circom_source = EmitVisitor(constrain_equality_assertions=constrain_equality_assertions).emit(circom)
         with open(self.unsafe_circuit_circom, 'w') as file_handler:
             file_handler.write(circom_source)
 
@@ -769,7 +774,12 @@ def run_metamorphic_tests \
     for project, circuit in [(project_orig, circuit_orig), (project_tf, circuit_tf)]:
         manager = CircomManager(project, online_tuning)
         circom_managers.append(manager)
-        manager.setup(circuit, config.circom.constraint_assignment_probability, rng)
+        manager.setup \
+            ( circuit
+            , constraint_assignment_probability=config.circom.constraint_assignment_probability
+            , constrain_equality_assertions=config.circom.constrain_equality_assertions
+            , rng=rng
+            )
         opt = rng.choice(list(CircomOptimization))
         manager.compile(curve, opt)
 

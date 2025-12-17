@@ -36,6 +36,10 @@ class QuadraticCircuitGenerator(BaseCircuitGenerator):
         self._preconditions = []
 
     def run(self) -> Circuit:
+        # Quadratic generator requires at least 1 input variable
+        assert self._min_number_of_input_variables >= 1, \
+            "Quadratic generator cannot be used with min_number_of_input_variables < 1"
+        
         input_variables_amount = self._rng.randint(
             self._min_number_of_input_variables, self._max_number_of_input_variables)
         output_variables_amount = self._rng.randint(

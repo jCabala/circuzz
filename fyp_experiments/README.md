@@ -19,6 +19,11 @@ The report together with logs will be stored under `circom-picus/obj` directory.
 You can modify the duration of the experiment in the `expderiments.sh` file.
 The logs will contain all of the generated circuits.
 
+## quadratic-circom
+### Overview
+
+Using normal `circuzz` oracles but with the `quadratic` generator.
+
 ## Scripts
 This directory contains some additionall helpful scripts.
 

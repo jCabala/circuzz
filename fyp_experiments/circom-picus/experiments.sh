@@ -29,8 +29,8 @@ WAIT_BETWEEN=2
 
 # Timeout settings
 T_SECONDS=30
-T_MINUTES=5
-T_HOURS=0
+T_MINUTES=30
+T_HOURS=2
 
 # Configs
 CIRCOM_CONFIG="fyp_experiments/circom-picus/configs/circom.json"

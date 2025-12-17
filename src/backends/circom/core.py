@@ -44,12 +44,8 @@ def run_circom_metamorphic_tests \
 
     match config.circom.oracle_type:
         case OracleType.CIRCUZZ:
-            if config.circom.constrain_equality_assertions:
-                logger.warning("circom oracle type 'CIRCUZZ' does not support equality assertion constraining. Ignoring the option.")
             return run_circom_metamorphic_tests_with_circuzz_oracle(seed, working_dir, report_dir, config, online_tuning)
         case OracleType.PICUS:
-            if config.circom.constrain_equality_assertions:
-                logger.info("enabling equality assertion constraining for PICUS oracle")
             return run_circom_metamorphic_tests_with_picus_oracle(seed, working_dir, report_dir, config, online_tuning)
         case _:
             raise NotImplementedError(f"unimplemented circom oracle type '{config.circom.oracle_type}'")

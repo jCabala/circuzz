@@ -430,7 +430,7 @@ def run_metamorphic_tests \
 
     # check that only arithmetic generators are used!
     generatorKind = config.ir.generation.generator
-    if generatorKind != GeneratorKind.ARITHMETIC:
+    if generatorKind not in [GeneratorKind.ARITHMETIC, GeneratorKind.QUADRATIC]:
         raise NotImplementedError(f"noir is unable to deal with '{generatorKind}' generator!")
 
     # sanity checks
