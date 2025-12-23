@@ -1,8 +1,9 @@
 from pathlib import Path
 from random import Random
 import time
-from typing import Any
 
+from backends.circom.config import OracleType
+from backends.circom.picus import ConstraintLevel, generate_picus_constrained_circom_code, ir_to_circom_code, run_picus_check
 from experiment.data import DataEntry, TestResult
 
 from circuzz.common.metamorphism import MetamorphicCircuitPair
@@ -20,9 +21,122 @@ from .utils import random_circom_curve
 
 logger = get_color_logger()
 
+
+def save_error_metamorphic_circuit_pair(save_path: Path, circom_code: str, circom_code_tf: str):
+    error_dir = save_path / "errors"
+
+    num_of_subdirs = len(list(error_dir.glob("error_*")))
+    current_error_dir = error_dir / f"error_{num_of_subdirs + 1}"
+    current_error_dir.mkdir(parents=True, exist_ok=True)
+    with open(current_error_dir / "circuit.circom", "w") as f:
+        f.write(circom_code)
+    with open(current_error_dir / "circuit_transformed.circom", "w") as f:
+        f.write(circom_code_tf)
+
+
 def run_circom_metamorphic_tests \
     ( seed: float
     , working_dir: Path
+    , report_dir: Path
+    , config: Config
+    , online_tuning: OnlineTuning
+    ) -> TestResult:
+
+    match config.circom.oracle_type:
+        case OracleType.CIRCUZZ:
+            return run_circom_metamorphic_tests_with_circuzz_oracle(seed, working_dir, report_dir, config, online_tuning)
+        case OracleType.PICUS:
+            return run_circom_metamorphic_tests_with_picus_oracle(seed, working_dir, report_dir, config, online_tuning)
+        case _:
+            raise NotImplementedError(f"unimplemented circom oracle type '{config.circom.oracle_type}'")
+
+def run_circom_metamorphic_tests_with_picus_oracle \
+    ( seed: float
+    , working_dir: Path
+    , report_dir: Path
+    , config: Config
+    , online_tuning: OnlineTuning
+    ) -> TestResult:
+        start_time = time.time()
+        logger.info(f"circom metamorphic testing, seed: {seed}, working-dir: {working_dir}, oracle: PICUS")
+        #
+        # Start Of Test
+        #
+
+        rng = Random(seed)
+        ir_gen_seed = rng.randint(1000000000, 9999999999)
+        ir_tf_seed = rng.randint(1000000000, 9999999999)
+        kind = random_weighted_metamorphic_kind(rng, config.ir.rewrite.weakening_probability)
+        curve = random_circom_curve(rng)
+        prime = curve_to_prime(curve)
+        constrain_equality_assertions = config.circom.constrain_equality_assertions
+
+        ir_generation_start = time.time()
+        ir, circom_code, num_tries = generate_picus_constrained_circom_code(prime, False, config.ir, ir_gen_seed, constrain_equality_assertions=constrain_equality_assertions)
+        
+        logger.info(f"Generated PICUS constrained circom code after {num_tries} tries.")
+        logger.info("Original, PICUS Constrained Circom Code:")
+        logger.info(circom_code)
+
+        ir_generation_time = time.time() - ir_generation_start
+
+        ir_rewrite_start = time.time()
+        POIs, ir_tf = generate_metamorphic_related_circuit(kind, ir, prime, config.ir, ir_tf_seed)
+        circom_code_tf = ir_to_circom_code(ir_tf, constrain_equality_assertions=constrain_equality_assertions)
+
+        logger.info("Transformed Circom Code:")
+        logger.info(circom_code_tf)
+
+        ir_rewrite_time = time.time() - ir_rewrite_start
+    
+        picus_result = run_picus_check(circom_code_tf)
+
+        # Save circuits if error detected
+        has_error = picus_result.constraint_level == ConstraintLevel.UNDER_CONSTRAINED
+        if has_error:
+            save_error_metamorphic_circuit_pair(report_dir, circom_code, circom_code_tf)
+
+        test_time = time.time() - start_time
+
+        return TestResult([
+             DataEntry \
+                ( tool = "circom"
+                , test_time = test_time
+                , seed = seed
+                , curve = curve.value
+                , oracle = kind.value
+                , iteration = 0
+                , error = f"PICUS: {picus_result.constraint_level}" if has_error else None
+                , ir_generation_seed = ir_gen_seed
+                , ir_generation_time = ir_generation_time
+                , ir_rewrite_seed = ir_tf_seed
+                , ir_rewrite_time = ir_rewrite_time
+                , ir_rewrite_rules = [POI.rule.name for POI in POIs]
+                , c1_node_size = ir.node_size()
+                , c1_assignments = len(ir.assignments())
+                , c1_assertions = len(ir.assertions())
+                , c1_assumptions = len(ir.assumptions())
+                , c1_input_signals = len(ir.inputs)
+                , c1_output_signals = len(ir.outputs)
+                , c2_node_size = ir_tf.node_size()
+                , c2_assignments = len(ir_tf.assignments())
+                , c2_assertions = len(ir_tf.assertions())
+                , c2_assumptions = len(ir_tf.assumptions())
+                , c2_input_signals = len(ir_tf.inputs)
+                , c2_output_signals = len(ir_tf.outputs)
+                # Picus specific data
+                , picus_program_generation_reruns = num_tries
+                , picus_transformed_constraint_level = picus_result.constraint_level
+             )
+        ])
+
+
+    
+
+def run_circom_metamorphic_tests_with_circuzz_oracle \
+    ( seed: float
+    , working_dir: Path
+    , report_dir: Path
     , config: Config
     , online_tuning: OnlineTuning
     ) -> TestResult:
@@ -33,7 +147,7 @@ def run_circom_metamorphic_tests \
     """
 
     start_time = time.time()
-    logger.info(f"circom metamorphic testing, seed: {seed}, working-dir: {working_dir}")
+    logger.info(f"circom metamorphic testing, seed: {seed}, working-dir: {working_dir}, oracle: CIRCUZZ")
 
     #
     # Start Of Test
@@ -61,6 +175,11 @@ def run_circom_metamorphic_tests \
     metamorphic_pair = MetamorphicCircuitPair(kind, ir, ir_tf, POIs)
     circom_result = run_metamorphic_tests(metamorphic_pair, test_seed, curve, working_dir, config, online_tuning)
     test_time = time.time() - start_time
+
+    # Save circuits if error detected (code already stored in result)
+    has_error = any(iteration.error is not None for iteration in circom_result.iterations)
+    if has_error and circom_result.original_code and circom_result.transformed_code:
+        save_error_metamorphic_circuit_pair(report_dir, circom_result.original_code, circom_result.transformed_code)
 
     #
     # Report Result

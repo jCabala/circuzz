@@ -10,6 +10,7 @@ from ..ir.rewrite.rewriter import PointOfInterest
 from ..ir.rewrite.rewriter import RuleBasedRewriter
 from ..ir.generators.arithmetic import ArithmeticCircuitGenerator
 from ..ir.generators.boolean import BooleanCircuitGenerator
+from ..ir.generators.quadratic import QuadraticCircuitGenerator
 from .field import CurvePrime
 
 #
@@ -36,6 +37,8 @@ def generate_random_circuit \
             generator = ArithmeticCircuitGenerator(curve, config, seed, exclude_prime)
         case GeneratorKind.BOOLEAN:
             generator = BooleanCircuitGenerator(curve, config, seed, exclude_prime)
+        case GeneratorKind.QUADRATIC:
+            generator = QuadraticCircuitGenerator(curve, config, seed, exclude_prime)
         case _:
             raise NotImplementedError(f"unknown generator kind '{config.generation.generator}'")
     circuit = generator.run()

@@ -1,12 +1,26 @@
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
+
+class OracleType(StrEnum):
+    CIRCUZZ = "circuzz"
+    PICUS = "picus"
+
+    @classmethod
+    def from_str(cls, value: str) -> 'OracleType':
+        match value:
+            case "circuzz":
+                return OracleType.CIRCUZZ # Default circuzz oracle
+            case "picus":
+                return OracleType.PICUS # PICUS based oracle for detecting under-constrained circuits
+            case _:
+                raise NotImplementedError(f"unimplemented oracle type '{value}', try {list(OracleType)}")
 
 @dataclass(frozen=True)
 class CircomConfig():
     """
     circom tool configuration
     """
-
     # probability for boundary values
     boundary_input_probability : float
 
@@ -22,6 +36,12 @@ class CircomConfig():
     # probability to constraint an assignment "<==" instead of "<--"
     constraint_assignment_probability: float
 
+    # Oracle type
+    oracle_type : OracleType
+
+    # Constrain equality assertions '===' instead of '=='
+    constrain_equality_assertions : bool = False
+
     @classmethod
     def from_dict(cls, value: dict[str, str]) -> 'CircomConfig':
 
@@ -30,6 +50,8 @@ class CircomConfig():
         likelihood_cpp_witness_generation = float(value.get("likelihood_cpp_witness_generation", 0.1))
         likelihood_snark_witness_check = float(value.get("likelihood_snark_witness_check", 0))
         constraint_assignment_probability = float(value.get("constraint_assignment_probability", 0.5))
+        oracle_type = OracleType.from_str(value.get("oracle_type", "circuzz"))
+        constrain_equality_assertions = bool(value.get("constrain_equality_assertions", False))
 
         return CircomConfig \
             ( boundary_input_probability = boundary_input_probability
@@ -37,4 +59,6 @@ class CircomConfig():
             , likelihood_cpp_witness_generation = likelihood_cpp_witness_generation
             , likelihood_snark_witness_check = likelihood_snark_witness_check
             , constraint_assignment_probability = constraint_assignment_probability
+            , oracle_type = oracle_type
+            , constrain_equality_assertions = constrain_equality_assertions
             )

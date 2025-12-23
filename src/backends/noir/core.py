@@ -17,9 +17,23 @@ from .helper import run_metamorphic_tests
 
 logger = get_color_logger()
 
+
+def save_error_metamorphic_circuit_pair(save_path: Path, noir_code: str, noir_code_tf: str):
+    error_dir = save_path / "errors"
+
+    num_of_subdirs = len(list(error_dir.glob("error_*")))
+    current_error_dir = error_dir / f"error_{num_of_subdirs + 1}"
+    current_error_dir.mkdir(parents=True, exist_ok=True)
+    with open(current_error_dir / "circuit.nr", "w") as f:
+        f.write(noir_code)
+    with open(current_error_dir / "circuit_transformed.nr", "w") as f:
+        f.write(noir_code_tf)
+
+
 def run_noir_metamorphic_tests \
     ( seed: float
     , working_dir: Path
+    , report_dir: Path
     , config: Config
     , online_tuning: OnlineTuning
     ) -> TestResult:
@@ -55,6 +69,11 @@ def run_noir_metamorphic_tests \
     metamorphic_pair = MetamorphicCircuitPair(kind, ir, ir_tf, POIs)
     noir_result = run_metamorphic_tests(metamorphic_pair, test_seed, curve_prime, working_dir, config, online_tuning)
     test_time = time.time() - start_time
+
+    # Save circuits if error detected (code already stored in result)
+    has_error = any(iteration.error is not None for iteration in noir_result.iterations)
+    if has_error and noir_result.original_code and noir_result.transformed_code:
+        save_error_metamorphic_circuit_pair(report_dir, noir_result.original_code, noir_result.transformed_code)
 
     data_entries : list[DataEntry] = []
     for idx, iteration in enumerate(noir_result.iterations):

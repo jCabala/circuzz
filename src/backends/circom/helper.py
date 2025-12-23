@@ -130,6 +130,8 @@ class TestIteration():
 @dataclass
 class CircomResult():
     iterations : list[TestIteration] = field(default_factory=list)
+    original_code : str | None = None
+    transformed_code : str | None = None
 
 #
 # Error strings
@@ -257,7 +259,12 @@ class CircomManager():
 
         self.online_tuning = online_tuning
 
-    def setup(self, circuit: Circuit, constraint_assignment_probability: float, rng: Random):
+    def setup \
+        (self
+        , circuit: Circuit
+        , constraint_assignment_probability: float
+        , constrain_equality_assertions: bool
+        , rng: Random):
         self.circuit = circuit
         self.error = None
 
@@ -268,7 +275,7 @@ class CircomManager():
         circom = IR2CircomVisitor(constraint_assignment_probability, rng).transform(circuit)
 
         # write circuit.circom source file
-        circom_source = EmitVisitor().emit(circom)
+        circom_source = EmitVisitor(constrain_equality_assertions=constrain_equality_assertions).emit(circom)
         with open(self.unsafe_circuit_circom, 'w') as file_handler:
             file_handler.write(circom_source)
 
@@ -736,9 +743,9 @@ def run_metamorphic_tests \
     # start a new experiment
     rng = Random(seed)
 
-    # check that only arithmetic generators are used!
+    # check that only arithmetic or quadratic generators are used!
     generatorKind = config.ir.generation.generator
-    if generatorKind != GeneratorKind.ARITHMETIC:
+    if generatorKind not in [GeneratorKind.ARITHMETIC, GeneratorKind.QUADRATIC]:
         raise NotImplementedError(f"circom is unable to deal with '{generatorKind}' generator!")
 
     # sanity checks
@@ -766,10 +773,22 @@ def run_metamorphic_tests \
 
     # project setup and circuit compilation
     circom_managers : list[CircomManager] = []
-    for project, circuit in [(project_orig, circuit_orig), (project_tf, circuit_tf)]:
+    for idx, (project, circuit) in enumerate([(project_orig, circuit_orig), (project_tf, circuit_tf)]):
         manager = CircomManager(project, online_tuning)
         circom_managers.append(manager)
-        manager.setup(circuit, config.circom.constraint_assignment_probability, rng)
+        manager.setup(
+            circuit,
+            constraint_assignment_probability=config.circom.constraint_assignment_probability,
+            constrain_equality_assertions=config.circom.constrain_equality_assertions,
+            rng=rng
+        )
+        # Store the generated code in the result
+        circom_code = manager.unsafe_circuit_circom.read_text()
+        if idx == 0:
+            circom_result.original_code = circom_code
+        else:
+            circom_result.transformed_code = circom_code
+        
         opt = rng.choice(list(CircomOptimization))
         manager.compile(curve, opt)
 

@@ -25,8 +25,7 @@ logger = get_color_logger()
 
 def run_corset_metamorphic_tests \
     ( seed: float
-    , working_dir: Path
-    , config: Config
+    , working_dir: Path    , report_dir: Path    , config: Config
     , online_tuning: OnlineTuning
     ) -> TestResult:
 

@@ -72,7 +72,9 @@ def get_system_nargo_verison() -> tuple[int,int,int] | None:
             return None
         first_line = version_exec.stdout.split("\n")[0]
         version_string = first_line.removeprefix("nargo version = ")
-        ver_big_str, ver_mid_str, ver_small_str = version_string.split(".")
+        # Remove any pre-release suffixes (e.g., "-beta.17")
+        version_base = version_string.split("-")[0]
+        ver_big_str, ver_mid_str, ver_small_str = version_base.split(".")
         ver_big, ver_mid, ver_small = int(ver_big_str), int(ver_mid_str), int(ver_small_str)
         __SYSTEM_NARGO_VERSION = (ver_big, ver_mid, ver_small)
     return __SYSTEM_NARGO_VERSION

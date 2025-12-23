@@ -20,9 +20,23 @@ from .utils import curve_to_prime
 
 logger = get_color_logger()
 
+
+def save_error_metamorphic_circuit_pair(save_path: Path, gnark_code: str, gnark_code_tf: str):
+    error_dir = save_path / "errors"
+
+    num_of_subdirs = len(list(error_dir.glob("error_*")))
+    current_error_dir = error_dir / f"error_{num_of_subdirs + 1}"
+    current_error_dir.mkdir(parents=True, exist_ok=True)
+    with open(current_error_dir / "circuit.go", "w") as f:
+        f.write(gnark_code)
+    with open(current_error_dir / "circuit_transformed.go", "w") as f:
+        f.write(gnark_code_tf)
+
+
 def run_gnark_metamorphic_tests \
     ( seed: int | float
     , working_dir: Path
+    , report_dir: Path
     , config: Config
     , online_tuning: OnlineTuning
     ) -> TestResult:
@@ -92,6 +106,22 @@ def run_gnark_metamorphic_tests \
 
     gnark_result = run_metamorphic_tests(pair_and_curves, test_seed, working_dir, config, online_tuning)
     test_time = time.time() - start_time
+
+    # Save circuits if error detected (code already stored in result)
+    has_error = any(
+        iteration.error is not None
+        for iterations_list in gnark_result.iterations.values()
+        for iteration in iterations_list
+    )
+    if has_error:
+        # Save the first pair that has an error
+        for (metamorphic_pair, _), circuit_info in zip(pair_and_curves, circuit_lookup.values()):
+            circuit_name = metamorphic_pair.fst.name
+            if circuit_name in gnark_result.iterations and circuit_name in gnark_result.circuit_codes:
+                if any(iteration.error is not None for iteration in gnark_result.iterations[circuit_name]):
+                    gnark_code_orig, gnark_code_tf = gnark_result.circuit_codes[circuit_name]
+                    save_error_metamorphic_circuit_pair(report_dir, gnark_code_orig, gnark_code_tf)
+                    break  # Save only the first error pair
 
     data_entries : list[DataEntry] = []
     for key in circuit_lookup:

@@ -23,6 +23,7 @@ logger = get_color_logger()
 def worker \
     ( seed: float
     , working_dir: Path
+    , report_dir: Path
     , config: Config
     , online_tuning: OnlineTuning
     ) -> tuple[TestResult | None, Exception | None]:
@@ -33,13 +34,13 @@ def worker \
         lang = config.zkp_language
         match lang:
             case ZKPLanguage.CIRCOM:
-                test_result = run_circom_metamorphic_tests(seed, working_dir, config, online_tuning)
+                test_result = run_circom_metamorphic_tests(seed, working_dir, report_dir, config, online_tuning)
             case ZKPLanguage.NOIR:
-                test_result = run_noir_metamorphic_tests(seed, working_dir, config, online_tuning)
+                test_result = run_noir_metamorphic_tests(seed, working_dir, report_dir, config, online_tuning)
             case ZKPLanguage.CORSET:
-                test_result = run_corset_metamorphic_tests(seed, working_dir, config, online_tuning)
+                test_result = run_corset_metamorphic_tests(seed, working_dir, report_dir, config, online_tuning)
             case ZKPLanguage.GNARK:
-                test_result = run_gnark_metamorphic_tests(seed, working_dir, config, online_tuning)
+                test_result = run_gnark_metamorphic_tests(seed, working_dir, report_dir, config, online_tuning)
             case _:
                 raise NotImplementedError(f"unexpected ZKP language {config.zkp_language}")
     except Exception as e: # catch any exception that is not caught so far
@@ -106,7 +107,7 @@ def explore(seed: float, report_dir: Path, working_dir: Path, timeout: int | Non
         while not is_stop:
 
             # start the test execution
-            result, exception = worker(rng.random(), working_dir, config, online_tuning)
+            result, exception = worker(rng.random(), working_dir, report_dir, config, online_tuning)
 
             # test has terminated and exploration time can be gathered
             explore_time = time.time() - start_time

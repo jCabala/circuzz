@@ -26,6 +26,7 @@ from .utils import GnarkCurve
 from .utils import write_test_func_to_buffer
 from .utils import PATH_TO_BASE_PROJECT
 from .ir2gnark import IR2GnarkVisitor
+from .emitter import EmitVisitor
 
 logger = get_color_logger()
 
@@ -101,6 +102,7 @@ class TestIterations():
 @dataclass
 class GnarkResult():
     iterations : dict[str,list[TestIterations]] = field(default_factory=dict)
+    circuit_codes : dict[str, tuple[str, str]] = field(default_factory=dict)  # Maps circuit name to (original_code, transformed_code)
 
 def setup_project(test_dir: Path) -> Path:
     """
@@ -159,7 +161,7 @@ def run_metamorphic_tests \
 
     # check that only arithmetic generators are used!
     generatorKind = config.ir.generation.generator
-    if generatorKind != GeneratorKind.ARITHMETIC:
+    if generatorKind not in [GeneratorKind.ARITHMETIC, GeneratorKind.QUADRATIC]:
         raise NotImplementedError(f"gnark is unable to deal with '{generatorKind}' generator!")
 
     # sanity checks
@@ -189,6 +191,14 @@ def run_metamorphic_tests \
 
         c1 = IR2GnarkVisitor().transform(circuit1)
         c2 = IR2GnarkVisitor().transform(circuit2)
+
+        # Store the generated code in the result
+        code_buffer_c1 = io.StringIO()
+        code_buffer_c2 = io.StringIO()
+        emitter = EmitVisitor()
+        emitter.emit_to_buffer(code_buffer_c1, c1)
+        emitter.emit_to_buffer(code_buffer_c2, c2)
+        gnark_result.circuit_codes[circuit1.name] = (code_buffer_c1.getvalue(), code_buffer_c2.getvalue())
 
         inputs = circuit1.inputs
 

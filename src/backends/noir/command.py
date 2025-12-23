@@ -8,7 +8,6 @@ from circuzz.common.command import execute_command
 # nargo, noir executer and compiler
 #
 
-# --expression-width
 
 def noir_execute(working_dir: Path, witness_name: str, expr_width: int = 4) -> ExecStatus:
     assert shutil.which("nargo"), "Unable to find 'nargo' in PATH!"
@@ -18,7 +17,10 @@ def noir_execute(working_dir: Path, witness_name: str, expr_width: int = 4) -> E
         , "--silence-warnings"
         , "--force"
         , witness_name
-        , "--expression-width", str(expr_width)
+        # , "--expression-width", str(expr_width)  # Not supported in nargo 0.38.0 and similar versions
+        # NOTE: --expression-width flag is commented out because it's not supported in all nargo versions.
+        # Some versions (e.g., 0.38.0) reject this flag with "unexpected argument" error.
+        # If using a newer version that supports this flag, uncomment the lines below.  
         ]
     return execute_command(command, "noir-execute", working_dir)
 
