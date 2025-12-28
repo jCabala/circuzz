@@ -1,6 +1,6 @@
 from circuzz.common.field import CurvePrime
 from circuzz.common.helper import generate_random_circuit
-from backends.circom.emitter import EmitVisitor
+from backends.circom.emitter import EmitConfig, EmitVisitor
 from backends.circom.ir2circom import IR2CircomVisitor
 from circuzz.ir.config import GeneratorKind, IRConfig
 
@@ -59,6 +59,7 @@ def test_circom_generator(seed: int):
     rng = Random(seed)
     constraint_assignment_probability = 0.5
     circom = IR2CircomVisitor(constraint_assignment_probability, rng).transform(circuit)
-    emitter = EmitVisitor()
+    emit_config = EmitConfig(constrain_equality_assertions=False, constrain_sharp_inequality_assertions=False)
+    emitter = EmitVisitor(emit_config)
 
     print(emitter.emit(circom))

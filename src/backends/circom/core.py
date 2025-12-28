@@ -3,6 +3,7 @@ from random import Random
 import time
 
 from backends.circom.config import OracleType
+from backends.circom.emitter import EmitConfig
 from backends.circom.picus import ConstraintLevel, generate_picus_constrained_circom_code, ir_to_circom_code, run_picus_check
 from experiment.data import DataEntry, TestResult
 
@@ -69,10 +70,13 @@ def run_circom_metamorphic_tests_with_picus_oracle \
         kind = random_weighted_metamorphic_kind(rng, config.ir.rewrite.weakening_probability)
         curve = random_circom_curve(rng)
         prime = curve_to_prime(curve)
-        constrain_equality_assertions = config.circom.constrain_equality_assertions
+        emit_config = EmitConfig(
+            constrain_equality_assertions=config.circom.constrain_equality_assertions,
+            constrain_sharp_inequality_assertions=config.circom.constrain_sharp_inequality_assertions,
+        )
 
         ir_generation_start = time.time()
-        ir, circom_code, num_tries = generate_picus_constrained_circom_code(prime, False, config.ir, ir_gen_seed, constrain_equality_assertions=constrain_equality_assertions)
+        ir, circom_code, num_tries = generate_picus_constrained_circom_code(prime, False, config.ir, ir_gen_seed, emit_config=emit_config)
         
         logger.info(f"Generated PICUS constrained circom code after {num_tries} tries.")
         logger.info("Original, PICUS Constrained Circom Code:")
@@ -82,7 +86,7 @@ def run_circom_metamorphic_tests_with_picus_oracle \
 
         ir_rewrite_start = time.time()
         POIs, ir_tf = generate_metamorphic_related_circuit(kind, ir, prime, config.ir, ir_tf_seed)
-        circom_code_tf = ir_to_circom_code(ir_tf, constrain_equality_assertions=constrain_equality_assertions)
+        circom_code_tf = ir_to_circom_code(ir_tf, emit_config=emit_config)
 
         logger.info("Transformed Circom Code:")
         logger.info(circom_code_tf)

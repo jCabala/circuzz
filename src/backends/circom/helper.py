@@ -41,7 +41,7 @@ from .utils import ProofSystem
 from .utils import PTAU_FILEPATH_2POW17
 from .utils import CIRCOMLIB_DIR
 
-from .emitter import EmitVisitor
+from .emitter import EmitConfig, EmitVisitor
 from .ir2circom import IR2CircomVisitor
 
 logger = get_color_logger()
@@ -264,6 +264,7 @@ class CircomManager():
         , circuit: Circuit
         , constraint_assignment_probability: float
         , constrain_equality_assertions: bool
+        , constrain_sharp_inequality_assertions: bool
         , rng: Random):
         self.circuit = circuit
         self.error = None
@@ -275,7 +276,8 @@ class CircomManager():
         circom = IR2CircomVisitor(constraint_assignment_probability, rng).transform(circuit)
 
         # write circuit.circom source file
-        circom_source = EmitVisitor(constrain_equality_assertions=constrain_equality_assertions).emit(circom)
+        emit_config = EmitConfig(constrain_equality_assertions=constrain_equality_assertions, constrain_sharp_inequality_assertions=constrain_sharp_inequality_assertions)
+        circom_source = EmitVisitor(emit_config).emit(circom)
         with open(self.unsafe_circuit_circom, 'w') as file_handler:
             file_handler.write(circom_source)
 
@@ -780,6 +782,7 @@ def run_metamorphic_tests \
             circuit,
             constraint_assignment_probability=config.circom.constraint_assignment_probability,
             constrain_equality_assertions=config.circom.constrain_equality_assertions,
+            constrain_sharp_inequality_assertions=config.circom.constrain_sharp_inequality_assertions,
             rng=rng
         )
         # Store the generated code in the result
