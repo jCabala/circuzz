@@ -21,6 +21,10 @@ class CircomConfig():
     """
     circom tool configuration
     """
+    # Constraining relations. Useful for quadratic generator
+    constrain_equality_assertions : bool
+    constrain_sharp_inequality_assertions : bool # <, >
+
     # probability for boundary values
     boundary_input_probability : float
 
@@ -39,9 +43,6 @@ class CircomConfig():
     # Oracle type
     oracle_type : OracleType
 
-    # Constrain equality assertions '===' instead of '=='
-    constrain_equality_assertions : bool = False
-
     @classmethod
     def from_dict(cls, value: dict[str, str]) -> 'CircomConfig':
 
@@ -52,6 +53,7 @@ class CircomConfig():
         constraint_assignment_probability = float(value.get("constraint_assignment_probability", 0.5))
         oracle_type = OracleType.from_str(value.get("oracle_type", "circuzz"))
         constrain_equality_assertions = bool(value.get("constrain_equality_assertions", False))
+        constrain_sharp_inequality_assertions = bool(value.get("constrain_sharp_inequality_assertions", False))
 
         return CircomConfig \
             ( boundary_input_probability = boundary_input_probability
@@ -61,4 +63,5 @@ class CircomConfig():
             , constraint_assignment_probability = constraint_assignment_probability
             , oracle_type = oracle_type
             , constrain_equality_assertions = constrain_equality_assertions
+            , constrain_sharp_inequality_assertions = constrain_sharp_inequality_assertions
             )

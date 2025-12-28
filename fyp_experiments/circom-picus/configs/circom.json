@@ -17,7 +17,8 @@
     "constraint_assignment_probability": 1,
     "oracle_type": "picus",
 
-    "constrain_equality_assertions": true
+    "constrain_equality_assertions": true,
+    "constrain_sharp_inequality_assertions": true
   },
 
   "ir": {
@@ -26,15 +27,7 @@
       "boolean_unary_operators": [],
       "boolean_binary_operators": [],
       "arithmetic_unary_operators": ["-", "~"],
-      "arithmetic_binary_operators": [
-        "+",
-        "-",
-        "*",
-        "**",
-        "/",
-        "%",
-        "^"
-      ],
+      "arithmetic_binary_operators": ["+", "-", "*", "**", "/", "%", "^"],
 
       "is_arithmetic_ternary_supported": true,
       "is_boolean_ternary_supported": true

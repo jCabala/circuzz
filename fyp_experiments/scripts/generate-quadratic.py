@@ -12,9 +12,10 @@ from random import Random
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
+from backends.circom.lib_path_resolver import LibPathMode
 from circuzz.common.field import CurvePrime
 from circuzz.common.helper import generate_random_circuit
-from backends.circom.emitter import EmitVisitor
+from backends.circom.emitter import EmitConfig, EmitVisitor
 from backends.circom.ir2circom import IR2CircomVisitor
 from circuzz.ir.config import GeneratorKind, IRConfig
 
@@ -33,6 +34,7 @@ def create_config():
         },
         "generation": {
             "generator": GeneratorKind.QUADRATIC,
+            "quadratic_generator_inequality_assertion_probability": 1,
 
             "constant_probability_weight": 1,
             "variable_probability_weight": 1,
@@ -83,9 +85,10 @@ def generate_program(seed: int, config: IRConfig, constraint_probability: float 
     # Transform to Circom
     rng = Random(seed)
     circom_ast = IR2CircomVisitor(constraint_probability, rng).transform(circuit)
-    
+
     # Emit Circom code
-    emitter = EmitVisitor(constrain_equality_assertions=True)
+    emit_config = EmitConfig(constrain_equality_assertions=True, constrain_sharp_inequality_assertions=True, lib_path_mode=LibPathMode.LOCAL)
+    emitter = EmitVisitor(emit_config)
     circom_code = emitter.emit(circom_ast)
     
     return circuit, circom_code
@@ -104,6 +107,15 @@ def main():
     # Create configuration
     config = create_config()
     
+    # Check if circomlib is locally present else git clone it
+    local_circomlib_path = Path(output_dir / "node_modules/circomlib")
+
+    if not local_circomlib_path.exists():
+        print("circomlib not found locally. Running `npm install circomlib`...")
+        os.system(f"cd {output_dir} && npm install circomlib")
+    else:
+        print("circomlib found locally.")
+
     print(f"Generating {num_programs} programs using the quadratic generator...")
     print(f"Output directory: {output_dir}")
     print()
@@ -115,7 +127,7 @@ def main():
         
         try:
             # Generate the program
-            circuit, circom_code = generate_program(seed, config)
+            _, circom_code = generate_program(seed, config)
             
             # Save the Circom code
             output_file = output_dir / f"circuit_{seed}.circom"
@@ -129,6 +141,24 @@ def main():
     
     print()
     print(f"Successfully generated {num_programs} programs in {output_dir}")
+    print()
+
+    print()
+    print("Running circom compiler on generated programs...")
+    print()
+
+    num_success = 0
+    for circom_file in output_dir.glob("*.circom"):
+        compile_command = f"circom {circom_file}"
+        result = os.system(compile_command)
+        if result == 0:
+            print(f"Compiled successfully: {circom_file.name}")
+            num_success += 1
+        else:
+            print(f"Compilation failed: {circom_file.name}")
+
+    print()
+    print(f"Compilation summary: {num_success}/{num_programs} programs compiled successfully.")
     print()
 
 

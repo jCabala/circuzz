@@ -16,7 +16,8 @@
 
         "constraint_assignment_probability" : 0.5,
 
-        "constrain_equality_assertions": true
+        "constrain_equality_assertions": true,
+        "constrain_sharp_inequality_assertions": true
     },
 
     "ir" : {
