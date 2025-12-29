@@ -1,10 +1,15 @@
 from dataclasses import dataclass
 
+from backends.circom.config import OracleType
+
 @dataclass(frozen=True)
 class GnarkConfig():
     """
     gnark tool configuration
     """
+
+    # Use picus oracle
+    oracle_type: OracleType
 
     # amount of different circuits tested at the same time (should be >= 1)
     bundle_size : int
@@ -24,9 +29,12 @@ class GnarkConfig():
         boundary_input_probability = float(value.get("boundary_input_probability", 0.1))
         test_iterations = int(value.get("test_iterations", 1))
         go_test_timeout = value.get("go_test_timeout", None)
+        oracle_type = OracleType.from_str(value.get("oracle_type", "circuzz"))
+
         return GnarkConfig \
             ( bundle_size = bundle_size
             , boundary_input_probability = boundary_input_probability
             , test_iterations = test_iterations
             , go_test_timeout = go_test_timeout
+            , oracle_type = oracle_type
             )

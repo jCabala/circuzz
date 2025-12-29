@@ -4,9 +4,11 @@ from .nodes import *
 
 class EmitVisitor():
 
-    def __init__(self):
+    def __init__(self, add_picus_annotations: bool = False):
         self.tabs = 0
         self.buffer = io.StringIO()
+        self.add_picus_annotations = add_picus_annotations
+        self.picus_input_names = []
 
     def emit(self, node: ASTNode) -> str:
         self.tabs = 0
@@ -63,12 +65,20 @@ class EmitVisitor():
         for field in node.fields:
             self.visit_circuit_struct_field(field)
             self.buffer.write("\n")
+
+            if self.add_picus_annotations:
+                self.picus_input_names.append(field.name)
+
         self.tabs -= 1
         self.buffer.write("}")
 
     def visit_circuit_define_function(self, node: CircuitDefineFunction):
         self.buffer.write(f"func (circuit *{node.name}) Define(api frontend.API) error {{\n")
         self.tabs += 1
+
+        if self.add_picus_annotations:
+            self.annotate_picus_inputs()
+
         for stmt in node.statements:
             self.visit(stmt)
             self.buffer.write("\n")
@@ -77,10 +87,41 @@ class EmitVisitor():
         self.tabs -= 1
         self.buffer.write("}")
 
+    def annotate_picus_inputs(self):
+        for input_name in self.picus_input_names:
+            self.buffer.write(self.current_tabs)
+            self.buffer.write(f"picus_gnark.CircuitVarIn(circuit.{input_name})\n")
+            self.buffer.write(self.current_tabs)
+            self.buffer.write(f"picus_gnark.Label(circuit.{input_name}, \"{input_name}\")\n")
+
+        self.buffer.write("\n")
+
+    def add_picus_main_function(self, circuit_name: str):
+        self.buffer.write("\n\nfunc main() {\n")
+        self.tabs += 1
+        self.buffer.write(self.current_tabs)
+        self.buffer.write(f"var circuit {circuit_name}\n")
+        self.buffer.write(self.current_tabs)
+        self.buffer.write("picus_gnark.CompilePicus(\"circuit\", &circuit, ecc.BN254.ScalarField())\n")
+        self.tabs -= 1
+        self.buffer.write("}")
+
     def visit_circuit_definition_collection(self, node: CircuitDefinitionCollection):
+        if self.add_picus_annotations:
+            self.buffer.write("package main\n\n")
+            self.buffer.write("import (\n")
+            self.buffer.write("\t\"math/big\"\n")
+            self.buffer.write("\t\"github.com/Veridise/picus_gnark\"\n")
+            self.buffer.write("\t\"github.com/consensys/gnark-crypto/ecc\"\n")
+            self.buffer.write("\t\"github.com/consensys/gnark/frontend\"\n")
+            self.buffer.write(")\n\n")
+        
         self.visit_circuit_struct(node.circuit_struct)
         self.buffer.write("\n\n")
         self.visit_circuit_define_function(node.circuit_define)
+
+        if self.add_picus_annotations:
+            self.add_picus_main_function(node.circuit_struct.name)
 
     def visit_call_statement(self, node: CallStatement):
         self.buffer.write(self.current_tabs)

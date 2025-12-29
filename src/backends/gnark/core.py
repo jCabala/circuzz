@@ -4,6 +4,7 @@ from random import Random
 import time
 from typing import Any
 
+from backends.gnark.config import OracleType
 from experiment.data import DataEntry, TestResult
 
 from circuzz.common.metamorphism import MetamorphicCircuitPair
@@ -17,6 +18,7 @@ from experiment.config import Config, OnlineTuning
 from .helper import run_metamorphic_tests
 from .utils import GnarkCurve
 from .utils import curve_to_prime
+from .picus import ConstraintLevel, generate_picus_constrained_gnark_code, ir_to_gnark_code, run_picus_check
 
 logger = get_color_logger()
 
@@ -41,13 +43,108 @@ def run_gnark_metamorphic_tests \
     , online_tuning: OnlineTuning
     ) -> TestResult:
 
+    match config.gnark.oracle_type:
+        case OracleType.CIRCUZZ:
+            return run_gnark_metamorphic_tests_with_circuzz_oracle(seed, working_dir, report_dir, config, online_tuning)
+        case OracleType.PICUS:
+            return run_gnark_metamorphic_tests_with_picus_oracle(seed, working_dir, report_dir, config, online_tuning)
+        case _:
+            raise NotImplementedError(f"unimplemented gnark oracle type '{config.gnark.oracle_type}'")
+
+def run_gnark_metamorphic_tests_with_picus_oracle \
+    ( seed: int | float
+    , working_dir: Path
+    , report_dir: Path
+    , config: Config
+    , online_tuning: OnlineTuning
+    ) -> TestResult:
+        """
+        Runs a single metamorphic test using PICUS oracle for constraint checking.
+        """
+        start_time = time.time()
+        logger.info(f"gnark metamorphic testing, seed: {seed}, working-dir: {working_dir}, oracle: PICUS")
+
+        rng = Random(seed)
+        ir_gen_seed = rng.randint(1000000000, 9999999999)
+        ir_tf_seed = rng.randint(1000000000, 9999999999)
+        kind = random_weighted_metamorphic_kind(rng, config.ir.rewrite.weakening_probability)
+        curve = rng.choice(list(GnarkCurve))
+        prime = curve_to_prime(curve)
+
+        ir_generation_start = time.time()
+        ir, gnark_code, num_tries = generate_picus_constrained_gnark_code(prime, False, config.ir, ir_gen_seed)
+        
+        logger.info(f"Generated PICUS constrained gnark code after {num_tries} tries.")
+        logger.info("Original, PICUS Constrained Gnark Code:")
+        logger.info(gnark_code)
+
+        ir_generation_time = time.time() - ir_generation_start
+
+        ir_rewrite_start = time.time()
+        POIs, ir_tf = generate_metamorphic_related_circuit(kind, ir, prime, config.ir, ir_tf_seed)
+        gnark_code_tf = ir_to_gnark_code(ir_tf)
+
+        logger.info("Transformed Gnark Code:")
+        logger.info(gnark_code_tf)
+
+        ir_rewrite_time = time.time() - ir_rewrite_start
+    
+        picus_result = run_picus_check(gnark_code_tf)
+
+        # Save circuits if error detected
+        has_error = picus_result.constraint_level == ConstraintLevel.UNDER_CONSTRAINED
+        if has_error:
+            save_error_metamorphic_circuit_pair(report_dir, gnark_code, gnark_code_tf)
+
+        test_time = time.time() - start_time
+
+        return TestResult([
+             DataEntry \
+                ( tool = "gnark"
+                , test_time = test_time
+                , seed = seed
+                , curve = curve.value
+                , oracle = kind.value
+                , iteration = 0
+                , error = f"PICUS: {picus_result.constraint_level}" if has_error else None
+                , ir_generation_seed = ir_gen_seed
+                , ir_generation_time = ir_generation_time
+                , ir_rewrite_seed = ir_tf_seed
+                , ir_rewrite_time = ir_rewrite_time
+                , ir_rewrite_rules = [POI.rule.name for POI in POIs]
+                , c1_node_size = ir.node_size()
+                , c1_assignments = len(ir.assignments())
+                , c1_assertions = len(ir.assertions())
+                , c1_assumptions = len(ir.assumptions())
+                , c1_input_signals = len(ir.inputs)
+                , c1_output_signals = len(ir.outputs)
+                , c2_node_size = ir_tf.node_size()
+                , c2_assignments = len(ir_tf.assignments())
+                , c2_assertions = len(ir_tf.assertions())
+                , c2_assumptions = len(ir_tf.assumptions())
+                , c2_input_signals = len(ir_tf.inputs)
+                , c2_output_signals = len(ir_tf.outputs)
+                # PICUS specific data
+                , picus_program_generation_reruns = num_tries
+                , picus_transformed_constraint_level = picus_result.constraint_level
+             )
+        ])
+
+def run_gnark_metamorphic_tests_with_circuzz_oracle \
+    ( seed: int | float
+    , working_dir: Path
+    , report_dir: Path
+    , config: Config
+    , online_tuning: OnlineTuning
+    ) -> TestResult:
+
     """
     Runs a single metamorphic test with a given seed using the provided
     working directory and configuration.
     """
 
     start_time = time.time()
-    logger.info(f"gnark metamorphic testing, seed: {seed}, working-dir: {working_dir}")
+    logger.info(f"gnark metamorphic testing, seed: {seed}, working-dir: {working_dir}, oracle: CIRCUZZ")
 
     rng = Random(seed)
 
