@@ -3,7 +3,6 @@ All functions and classes related to using the PICUS based oracle
 """
 
 from enum import StrEnum
-from backends.noir.ir2noir import IR2NoirVisitor
 from circuzz.common.colorlogs import get_color_logger
 from circuzz.common.field import CurvePrime
 from circuzz.common.helper import generate_random_circuit

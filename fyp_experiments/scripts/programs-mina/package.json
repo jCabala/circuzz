@@ -1,0 +1,11 @@
+{
+  "name": "mina-circuits-test",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "o1js": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
