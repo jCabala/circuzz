@@ -108,8 +108,8 @@ require (
         )
         
         stdout = picus_result.stdout
-        logger.debug(f"PICUS stdout: {stdout}")
-        logger.debug(f"PICUS stderr: {picus_result.stderr}")
+        logger.debug(f"PICUS stdout: {stdout if stdout else 'No stdout'}")
+        logger.debug(f"PICUS stderr: {picus_result.stderr if picus_result.stderr else 'No stderr'}")
         
         if "The circuit is properly constrained" in stdout:
             logger.info("PICUS result: Fully constrained")
@@ -140,7 +140,7 @@ def generate_picus_constrained_gnark_code \
     gnark_code = None
     circuit = None
     num_tries = 0
-    while not circuit or not is_properly_constrained(gnark_code):
+    while not circuit or is_properly_constrained(gnark_code):
         circuit = generate_random_circuit(curve, exclude_prime, config, seed)
         gnark_code = ir_to_gnark_code(circuit)
         seed += 1  # Change seed to get a different circuit next time if needed.
