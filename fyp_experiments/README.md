@@ -24,10 +24,17 @@ The logs will contain all of the generated circuits.
 
 Using normal `circuzz` oracles but with the `quadratic` generator.
 
+### How to run
+```bash
+cd fyp_experiments/quadratic-circuzz
+./build_podman.sh # Build the images
+./explore.sh
+```
+
 ## Scripts
 This directory contains some additionall helpful scripts.
 
-### generate-quadratic.py
+### generate-quadratic-circom.py
 Generates couple circom programs using the quadratic generator.
 
 # Changelog
@@ -43,3 +50,5 @@ Generates couple circom programs using the quadratic generator.
 5. Added `constrain-sharp-inequallity-assertions` flag that uses `LessThan` and `GreaterThan` from circomlib to constrain circuits.
 
 6. Added  `quadratic_generator_inequality_assertion_probability` field in the `generator` config. It is used by quadratic generator to assert how often to use `<` and `>` over `===`.
+
+7. Added a picus oracle to gnark and implemented `gnark-picus` experiments

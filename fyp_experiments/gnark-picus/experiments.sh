@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-# This scripts runs the experiments
-# It requires that the podman-build.sh script was run beforehand!
+# This script runs the experiments
+# It requires that the build_and_run_picus.sh script was run beforehand!
 # The script must be started from the project's root directory
 #
 
@@ -33,7 +33,7 @@ T_MINUTES=30
 T_HOURS=2
 
 # Configs
-CIRCOM_CONFIG="fyp_experiments/circom-picus/configs/circom.json"
+GNARK_CONFIG="fyp_experiments/gnark-picus/configs/gnark.json"
 
 # =================================================
 #                 Implementation
@@ -61,8 +61,8 @@ function start() {
 
     CONFIG=""
     # Setup config based on tool
-    if [[ $1 == "circom" ]]; then
-        CONFIG=$CIRCOM_CONFIG
+    if [[ $1 == "gnark" ]]; then
+        CONFIG=$GNARK_CONFIG
     else
         echo "unknown tool $1"
         exit 1
@@ -71,7 +71,7 @@ function start() {
     EXPLORE_REP_DIR=$OBJ_DIR/$4/explore/report
     LOG_DIR_RUN=$OBJ_DIR/$4/explore/logs
     EXPLORE_WORK_DIR=/tmp/$4/explore/working
-    PREFIXED_EXPLORE_REP_DIR=/app/fyp_experiments/circom-picus/$OBJ_DIR/$4/explore/report
+    PREFIXED_EXPLORE_REP_DIR=/app/fyp_experiments/gnark-picus/$OBJ_DIR/$4/explore/report
 
     mkdir -p "$EXPLORE_REP_DIR"
     mkdir -p "$LOG_DIR_RUN"
@@ -85,20 +85,16 @@ R=$RANDOM
 IDX=1
 
 # Setup the image
-IMAGE_NAME=picus-with-circom
+IMAGE_NAME=picus-with-gnark
 echo "Building the image $IMAGE_NAME"
-"${SCRIPT_DIR}/build_and_run_picus.sh" HEAD "$IMAGE_NAME" --no-run
+"${SCRIPT_DIR}/build_and_run_picus.sh" "$IMAGE_NAME" --no-run
 
 echo "Starting experiments...."
-start circom $IMAGE_NAME "EXPERIMENT" $R &
-echo "started circom with picus"
+start gnark $IMAGE_NAME "EXPERIMENT" $R &
+echo "started gnark with picus"
 
 # wait for all to finish
 wait $(jobs -p)
 
 # clean up temporary
 rm -rf $TMP_DIR
-
-end=`date +%s`
-runtime=$((end-start))
-echo "finished in $runtime s"
