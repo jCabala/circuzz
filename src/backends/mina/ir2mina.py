@@ -142,17 +142,17 @@ class IR2MinaVisitor:
                 eq_expr = MethodCall(lhs, "equals", [rhs])
                 result = MethodCall(eq_expr, "not", [])
             case IRNodes.Operator.LTH:
-                # a < b: use Gadgets.Field.lessThan
-                result = FunctionCall("Gadgets.Field.lessThan", [lhs, rhs])
+                # a < b: use Field method lessThan
+                result = MethodCall(lhs, "lessThan", [rhs])
             case IRNodes.Operator.GTH:
-                # a > b: equivalent to b < a
-                result = FunctionCall("Gadgets.Field.lessThan", [rhs, lhs])
+                # a > b: use Field method greaterThan
+                result = MethodCall(lhs, "greaterThan", [rhs])
             case IRNodes.Operator.LEQ:
-                # a <= b: use Gadgets.Field.lessThanOrEqual
-                result = FunctionCall("Gadgets.Field.lessThanOrEqual", [lhs, rhs])
+                # a <= b: use Field method lessThanOrEqual
+                result = MethodCall(lhs, "lessThanOrEqual", [rhs])
             case IRNodes.Operator.GEQ:
-                # a >= b: equivalent to b <= a
-                result = FunctionCall("Gadgets.Field.lessThanOrEqual", [rhs, lhs])
+                # a >= b: use Field method greaterThanOrEqual
+                result = MethodCall(lhs, "greaterThanOrEqual", [rhs])
             
             # Logical operations (Bool methods)
             case IRNodes.Operator.LAND:

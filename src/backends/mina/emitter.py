@@ -105,9 +105,12 @@ class EmitVisitor:
         self._write_indent()
         self._writeln(f"name: '{node.program_name}',")
         
-        # Public output type - use Struct for multiple outputs
+        # Public output type - handle 0, 1, or multiple outputs
         self._write_indent()
-        if len(node.outputs) == 1:
+        if len(node.outputs) == 0:
+            # No outputs - use undefined (ZkProgram allows this)
+            self._writeln("publicOutput: undefined,")
+        elif len(node.outputs) == 1:
             self._writeln(f"publicOutput: {node.outputs[0].type_name},")
         else:
             self._writeln("publicOutput: CircuitOutput,")
@@ -180,13 +183,16 @@ class EmitVisitor:
     
     def visit_return_statement(self, node: ReturnStatement):
         """Emit return statement with public output(s)."""
-        if len(node.output_names) == 1:
-            # Single output: return out0;
-            self._write(f"return {node.output_names[0]};")
+        if len(node.output_names) == 0:
+            # No outputs: return undefined (or empty object for ZkProgram)
+            self._write("return;")
+        elif len(node.output_names) == 1:
+            # Single output: return { publicOutput: out0 };
+            self._write(f"return {{ publicOutput: {node.output_names[0]} }};")
         else:
-            # Multiple outputs: return new CircuitOutput({ out0, out1, ... });
+            # Multiple outputs: return { publicOutput: new CircuitOutput({ out0, out1, ... }) };
             fields = ", ".join(node.output_names)
-            self._write(f"return new CircuitOutput({{ {fields} }});")
+            self._write(f"return {{ publicOutput: new CircuitOutput({{ {fields} }}) }};")
     
     # =========================================================================
     # Expressions

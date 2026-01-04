@@ -8,12 +8,13 @@ from pathlib import Path
 from random import Random
 import time
 
-from circuzz.common.metamorphism import MetamorphicCircuitPair
+from circuzz.common.metamorphism import MetamorphicCircuitPair, MetamorphicKind
 from circuzz.common.helper import generate_metamorphic_related_circuit
 from circuzz.common.field import CurvePrime, get_curve_name
 from circuzz.common.helper import generate_random_circuit
 from circuzz.common.helper import random_weighted_metamorphic_kind
 from circuzz.common.colorlogs import get_color_logger
+from circuzz.ir.config import GeneratorKind
 
 from experiment.config import Config, OnlineTuning
 from experiment.data import DataEntry, TestResult
@@ -77,23 +78,30 @@ def run_mina_metamorphic_tests(
     test_seed = rng.randint(1000000000, 9999999999)
     kind = random_weighted_metamorphic_kind(rng, config.ir.rewrite.weakening_probability)
     
-    # TODO: Determine which curves Mina/o1js supports
-    # For now, use BN254 as a placeholder (similar to Noir)
-    curve_prime = CurvePrime.BN254
+    # Mina/o1js uses Pallas curve (part of Pasta curves)
+    curve_prime = CurvePrime.PALLAS
     curve_name = get_curve_name(curve_prime)
     
     # Generate original circuit
+    logger.debug(f"Generating circuit with seed {ir_gen_seed}, generator: {config.ir.generation.generator}")
     ir_generation_start = time.time()
     ir = generate_random_circuit(curve_prime, True, config.ir, ir_gen_seed)
     ir.name = f"Circuit_{curve_name}"
     ir_generation_time = time.time() - ir_generation_start
+    logger.debug(f"Generated circuit: inputs={ir.inputs}, outputs={ir.outputs}, statements={len(ir.statements)}")
     
     # Apply metamorphic transformation
+    logger.debug(f"Applying metamorphic transformation (kind={kind}) with seed {ir_tf_seed}")
     ir_rewrite_start = time.time()
     POIs, ir_tf = generate_metamorphic_related_circuit(kind, ir, curve_prime, config.ir, ir_tf_seed)
-    postfix = "_eq" if kind.value == "equal" else "_wk"
+    postfix = "_eq" if kind == MetamorphicKind.EQUAL else "_wk"
     ir_tf.name = f"{ir.name}{postfix}"
     ir_rewrite_time = time.time() - ir_rewrite_start
+    logger.debug(f"Transformed circuit: inputs={ir_tf.inputs}, outputs={ir_tf.outputs}, rules applied: {[p.rule.name for p in POIs]}")
+    
+    # Determine if this is a boolean circuit
+    is_boolean_circuit = config.ir.generation.generator == GeneratorKind.BOOLEAN
+    logger.debug(f"Generator kind: {config.ir.generation.generator}, is_boolean_circuit: {is_boolean_circuit}")
     
     # Create metamorphic pair and run tests
     metamorphic_pair = MetamorphicCircuitPair(kind, ir, ir_tf, POIs)
@@ -102,13 +110,16 @@ def run_mina_metamorphic_tests(
         test_seed,
         curve_prime,
         working_dir,
-        config,
-        online_tuning,
+        config.mina,
+        is_boolean_circuit=is_boolean_circuit,
+        online_tuning=online_tuning,
     )
     test_time = time.time() - start_time
+    logger.debug(f"Metamorphic testing complete: {len(mina_result.iterations)} iterations")
     
     # Save circuits if error detected
     has_error = any(iteration.error is not None for iteration in mina_result.iterations)
+    logger.debug(f"Has error: {has_error}")
     if has_error and mina_result.original_code and mina_result.transformed_code:
         save_error_metamorphic_circuit_pair(report_dir, mina_result.original_code, mina_result.transformed_code)
     
@@ -140,13 +151,27 @@ def run_mina_metamorphic_tests(
             c2_assumptions=len(ir_tf.assumptions()),
             c2_input_signals=len(ir_tf.inputs),
             c2_output_signals=len(ir_tf.outputs),
+            # Mina-specific fields (separated pipeline stages)
+            mina_c1_ts_compile=iteration.c1_ts_compile,
+            mina_c1_ts_compile_time=iteration.c1_ts_compile_time,
+            mina_c2_ts_compile=iteration.c2_ts_compile,
+            mina_c2_ts_compile_time=iteration.c2_ts_compile_time,
+            mina_c1_zk_compile=iteration.c1_zk_compile,
+            mina_c1_zk_compile_time=iteration.c1_zk_compile_time,
+            mina_c2_zk_compile=iteration.c2_zk_compile,
+            mina_c2_zk_compile_time=iteration.c2_zk_compile_time,
+            mina_c1_prove=iteration.c1_prove,
+            mina_c1_prove_time=iteration.c1_prove_time,
+            mina_c2_prove=iteration.c2_prove,
+            mina_c2_prove_time=iteration.c2_prove_time,
+            mina_c1_verify=iteration.c1_verify,
+            mina_c1_verify_time=iteration.c1_verify_time,
+            mina_c2_verify=iteration.c2_verify,
+            mina_c2_verify_time=iteration.c2_verify_time,
+            mina_c1_ignored_error=iteration.c1_ignored_error,
+            mina_c2_ignored_error=iteration.c2_ignored_error,
         )
         data_entries.append(data_entry)
     
-    return TestResult(
-        tool="mina",
-        iterations=mina_result.iterations,
-        data_entries=data_entries,
-        original_code=mina_result.original_code,
-        transformed_code=mina_result.transformed_code,
-    )
+    logger.debug(f"Returning TestResult with {len(data_entries)} entries")
+    return TestResult(entries=data_entries)
