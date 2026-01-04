@@ -8,7 +8,6 @@ from circuzz.ir import nodes as IRNodes
 from circuzz.common.field import CurvePrime
 
 from .nodes import *
-from .emitter import EmitVisitor
 
 
 class NameDispenser:
@@ -44,11 +43,7 @@ class IR2MinaVisitor:
     - NOT: a.not()
     """
     
-    SIGNAL_DEBUG_PREFIX = "<@> "
-    SIGNAL_DEBUG_SEPARATOR = " => "
-    
     def __init__(self, curve: CurvePrime, is_boolean_circuit: bool = False):
-        self.__curve = curve
         self.__name_dispenser = NameDispenser()
         self.__is_boolean_circuit = is_boolean_circuit
     
@@ -260,45 +255,6 @@ class IR2MinaVisitor:
     # Circuit Visitor
     # =========================================================================
     
-    def _collect_variable_types(self, node: IRNodes.Circuit) -> dict[str, bool]:
-        """
-        Collect variable type information from the circuit statements.
-        Returns a dict mapping variable name to is_boolean flag.
-        """
-        var_types: dict[str, bool] = {}
-        
-        def collect_from_expr(expr: IRNodes.Expression):
-            """Recursively collect variable type info from an expression."""
-            match expr:
-                case IRNodes.Variable():
-                    # If we see a variable used as boolean, mark it
-                    if expr.name not in var_types:
-                        var_types[expr.name] = expr.is_boolean
-                    elif expr.is_boolean:
-                        # If ever used as boolean, mark as boolean
-                        var_types[expr.name] = True
-                case IRNodes.UnaryExpression():
-                    collect_from_expr(expr.value)
-                case IRNodes.BinaryExpression():
-                    collect_from_expr(expr.lhs)
-                    collect_from_expr(expr.rhs)
-                case IRNodes.TernaryExpression():
-                    collect_from_expr(expr.condition)
-                    collect_from_expr(expr.if_expr)
-                    collect_from_expr(expr.else_expr)
-        
-        for stmt in node.statements:
-            match stmt:
-                case IRNodes.Assignment():
-                    collect_from_expr(stmt.lhs)
-                    collect_from_expr(stmt.rhs)
-                case IRNodes.Assertion():
-                    collect_from_expr(stmt.value)
-                case IRNodes.Assume():
-                    collect_from_expr(stmt.condition)
-        
-        return var_types
-    
     def visit_circuit(self, node: IRNodes.Circuit) -> Document:
         """Visit a circuit and generate the complete o1js program."""
         # Imports needed for the program
@@ -399,8 +355,5 @@ class IR2MinaVisitor:
     def _debug_expr(self, value: Expression) -> list[Statement]:
         """Generate debug print statements for an expression."""
         # Use Provable.log for circuit debugging
-        value_str = EmitVisitor().emit(value) if isinstance(value, Identifier) else "value"
-        
-        # Provable.log(`<@> varname => `, value)
         log_call = FunctionCall("Provable.log", [value])
         return [ExpressionStatement(log_call)]

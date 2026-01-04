@@ -36,7 +36,6 @@ logger = get_color_logger()
 PROJECT_NAME = "circuit"
 CIRCUIT_FILENAME = "circuit.ts"
 COMPILED_FILENAME = "circuit.js"
-TEST_RUNNER_FILENAME = "test-runner.mjs"
 
 # ================================================================
 #                        Error Types
@@ -45,18 +44,8 @@ TEST_RUNNER_FILENAME = "test-runner.mjs"
 
 class MinaError(StrEnum):
     """Possible error types detected by Mina tests."""
-    UNKNOWN_EXECUTION_ERROR = "unknown execution error"
-    UNKNOWN_COMPILE_ERROR = "unknown compile error"
-    UNKNOWN_PROOF_ERROR = "unknown proof error"
-    UNKNOWN_VERIFICATION_ERROR = "unknown verification error"
-    
-    ASSERTION_FAILED = "assertion failed"
-    CONSTRAINT_UNSATISFIED = "constraint unsatisfied"
-    TIMEOUT = "timeout"
-    
     DIVERGING_SIGNALS = "diverging signals"
     METAMORPHIC_VIOLATION_EXECUTION = "metamorphic violation execution"
-    METAMORPHIC_VIOLATION_PROOF = "metamorphic violation proof"
 
 
 # ================================================================
@@ -157,36 +146,6 @@ def random_input(
     return input_map
 
 
-def random_input_from_circuit(
-    circuit: Circuit,
-    curve: CurvePrime,
-    boundary_probability: float,
-    rng: Random,
-    is_boolean_circuit: bool = False,
-) -> dict[str, str]:
-    """
-    Generate random inputs based on circuit definition.
-    
-    Args:
-        circuit: Circuit IR node
-        curve: Field curve
-        boundary_probability: Probability of boundary values
-        rng: Random number generator
-        is_boolean_circuit: Whether this is a boolean circuit
-    
-    Returns:
-        Dictionary mapping input names to values
-    """
-    input_types = ["Bool" if is_boolean_circuit else "Field"] * len(circuit.inputs)
-    return random_input(
-        circuit.inputs,
-        input_types,
-        curve,
-        boundary_probability,
-        rng,
-    )
-
-
 # ================================================================
 #                     Code Generation
 # ================================================================
@@ -263,83 +222,6 @@ def create_tsconfig(project_dir: Path) -> Path:
     
     path = project_dir / "tsconfig.json"
     path.write_text(json.dumps(tsconfig, indent=2))
-    return path
-
-
-def create_test_runner(
-    project_dir: Path,
-    circuit_name: str,
-    inputs: dict[str, str],
-    input_types: list[str],
-) -> Path:
-    """
-    Create a test runner script for executing the circuit.
-    This is a legacy combined runner - use create_stage_runners for separated pipeline.
-    
-    Args:
-        project_dir: Project directory
-        circuit_name: Name of the circuit file (without extension)
-        inputs: Input values
-        input_types: Types of inputs ("Field" or "Bool")
-    
-    Returns:
-        Path to created test runner
-    """
-    # Build input arguments with correct types
-    input_args = []
-    for i, (name, value) in enumerate(sorted(inputs.items())):
-        typ = input_types[i] if i < len(input_types) else "Field"
-        if typ == "Bool":
-            input_args.append(f"Bool({value})")
-        else:
-            input_args.append(f"Field({value}n)")
-    
-    inputs_str = ", ".join(input_args)
-    
-    runner_code = f'''// Auto-generated test runner for o1js circuit
-import {{ Field, Bool }} from 'o1js';
-import {{ circuit }} from './{circuit_name}.js';
-
-async function main() {{
-    const startCompile = Date.now();
-    await circuit.compile();
-    const compileTime = Date.now() - startCompile;
-    
-    try {{
-        const startProve = Date.now();
-        const result = await circuit.compute({inputs_str});
-        const proveTime = Date.now() - startProve;
-        
-        // Extract public output (handle both single and struct outputs)
-        let outputStr;
-        if (result.publicOutput && typeof result.publicOutput.toString === 'function') {{
-            outputStr = result.publicOutput.toString();
-        }} else {{
-            outputStr = JSON.stringify(result.publicOutput);
-        }}
-        
-        // Output JSON result
-        console.log(JSON.stringify({{
-            success: true,
-            compile_time_ms: compileTime,
-            prove_time_ms: proveTime,
-            public_output: outputStr
-        }}));
-        
-    }} catch (error) {{
-        console.log(JSON.stringify({{
-            success: false,
-            error: error.message
-        }}));
-        process.exit(1);
-    }}
-}}
-
-main();
-'''
-    
-    path = project_dir / TEST_RUNNER_FILENAME
-    path.write_text(runner_code)
     return path
 
 
@@ -611,71 +493,9 @@ def compile_typescript(
     return status
 
 
-def run_test_runner(
-    project_dir: Path,
-    timeout: float | None = None,
-) -> ExecStatus:
-    """
-    Execute the test runner script.
-    
-    Args:
-        project_dir: Directory containing the test runner
-        timeout: Optional timeout in seconds
-    
-    Returns:
-        ExecStatus with execution result
-    """
-    command = ["node", "--experimental-vm-modules", TEST_RUNNER_FILENAME]
-    return execute_command(
-        command,
-        identifier="node_execute",
-        working_dir=project_dir,
-        timeout=timeout,
-    )
-
-
 # ================================================================
 #                     Result Parsing
 # ================================================================
-
-
-def parse_execution_result(status: ExecStatus) -> tuple[bool, str | None, str | None]:
-    """
-    Parse the result of circuit execution.
-    
-    Args:
-        status: ExecStatus from running test runner
-    
-    Returns:
-        Tuple of (success, output_value, error_message)
-    """
-    if status.is_timeout:
-        return False, None, "timeout"
-    
-    # Try to parse JSON output
-    stdout = status.stdout.strip()
-    
-    try:
-        # Find JSON in output (might have other logs before it)
-        for line in stdout.split('\n'):
-            line = line.strip()
-            if line.startswith('{') and line.endswith('}'):
-                result = json.loads(line)
-                if result.get("success"):
-                    return True, result.get("public_output"), None
-                else:
-                    return False, None, result.get("error", "unknown error")
-    except json.JSONDecodeError:
-        pass
-    
-    # Fallback: check return code
-    if status.returncode == 0:
-        return True, None, None
-    
-    # Try to extract error from stderr
-    stderr = remove_ansi_escape_sequences(status.stderr)
-    error_msg = extract_assertion_error(stderr) or "execution failed"
-    return False, None, error_msg
 
 
 def extract_assertion_error(error_msg: str) -> str | None:
@@ -706,59 +526,6 @@ def extract_assertion_error(error_msg: str) -> str | None:
             return match.group(1).strip()[:200]
     
     return None
-
-
-# ================================================================
-#                     Full Execution Pipeline
-# ================================================================
-
-
-def execute_circuit(
-    project_dir: Path,
-    inputs: dict[str, str],
-    input_types: list[str],
-    compile_timeout: float | None = 60.0,
-    execute_timeout: float | None = 300.0,
-) -> tuple[ExecStatus | None, ExecStatus | None, bool, str | None, str | None]:
-    """
-    Execute a circuit with given inputs.
-    
-    Args:
-        project_dir: Project directory with compiled circuit
-        inputs: Input values
-        input_types: Types of inputs
-        compile_timeout: Timeout for TypeScript compilation
-        execute_timeout: Timeout for circuit execution
-    
-    Returns:
-        Tuple of (compile_status, exec_status, success, output, error)
-    """
-    # Create test runner with inputs
-    create_test_runner(project_dir, "circuit", inputs, input_types)
-    logger.debug(f"Created test runner in {project_dir} with inputs: {inputs}")
-    
-    # Compile TypeScript (if not already compiled)
-    compiled_file = project_dir / COMPILED_FILENAME
-    if not compiled_file.exists():
-        logger.debug(f"Compiling TypeScript in {project_dir}...")
-        compile_status = compile_typescript(project_dir, timeout=compile_timeout)
-        if compile_status.is_failure():
-            # TypeScript errors typically go to stdout, not stderr
-            error_output = compile_status.stdout.strip() or compile_status.stderr.strip()
-            error_msg = error_output[:500] if error_output else "unknown error"
-            logger.debug(f"Compilation failed: {error_msg}")
-            return compile_status, None, False, None, f"compilation failed: {error_msg}"
-    else:
-        logger.debug(f"Reusing compiled circuit in {project_dir}")
-        compile_status = None
-    
-    # Run test runner
-    logger.debug(f"Running test runner in {project_dir}...")
-    exec_status = run_test_runner(project_dir, timeout=execute_timeout)
-    success, output, error = parse_execution_result(exec_status)
-    logger.debug(f"Execution result: success={success}, output={output}, error={error}")
-    
-    return compile_status, exec_status, success, output, error
 
 
 # ================================================================
@@ -969,13 +736,6 @@ def is_assertion_error(error: str | None) -> bool:
     ]
     error_lower = error.lower()
     return any(pattern.lower() in error_lower for pattern in assertion_patterns)
-
-
-def is_compilation_error(error: str | None) -> bool:
-    """Check if an error is a compilation error."""
-    if error is None:
-        return False
-    return "compilation failed" in error.lower()
 
 
 def run_single_iteration(

@@ -90,18 +90,8 @@ class FunctionCall(Expression):
         )
 
 
-@dataclass
-class TypeReference(Expression):
-    """
-    Type reference used in expressions: Field, Bool
-    """
-    name: str
-    
-    def copy(self) -> 'TypeReference':
-        return TypeReference(self.name)
-
-
 # =============================================================================
+# Statements
 # Statements
 # =============================================================================
 

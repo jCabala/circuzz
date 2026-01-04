@@ -51,8 +51,6 @@ class EmitVisitor:
                 self.visit_method_call(node)
             case FunctionCall():
                 self.visit_function_call(node)
-            case TypeReference():
-                self.visit_type_reference(node)
             case _:
                 raise NotImplementedError(f"Cannot emit node type: {type(node).__name__}")
     
@@ -233,7 +231,3 @@ class EmitVisitor:
                 self._write(", ")
             self.visit(arg)
         self._write(")")
-    
-    def visit_type_reference(self, node: TypeReference):
-        """Emit type reference."""
-        self._write(node.name)

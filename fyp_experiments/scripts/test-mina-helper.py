@@ -6,7 +6,7 @@ This script tests the end-to-end workflow of:
 1. Generating IR circuits
 2. Converting to Mina/o1js code
 3. Setting up project structure
-4. Compiling and executing circuits
+4. Compiling and executing circuits (using stage-based pipeline)
 
 Usage:
     cd /path/to/circuzz
@@ -27,12 +27,14 @@ from circuzz.ir.nodes import Circuit, Assignment, Variable, Integer, BinaryExpre
 from backends.mina.helper import (
     ir_to_mina_code,
     prepare_project,
-    create_test_runner,
     compile_typescript,
-    run_test_runner,
-    parse_execution_result,
-    execute_circuit,
     random_input,
+    # Stage-based execution
+    execute_ts_compile,
+    execute_zk_compile,
+    execute_prove,
+    execute_verify,
+    create_prove_runner,
 )
 
 
@@ -178,10 +180,10 @@ def test_input_generation():
     return True
 
 
-def test_test_runner_creation():
-    """Test test runner script generation."""
+def test_prove_runner_creation():
+    """Test prove runner script generation (stage-based)."""
     print("\n" + "="*60)
-    print("TEST: Test Runner Creation")
+    print("TEST: Prove Runner Creation (Stage-Based)")
     print("="*60)
     
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -190,36 +192,36 @@ def test_test_runner_creation():
         inputs = {"in0": "5", "in1": "3"}
         input_types = ["Field", "Field"]
         
-        runner_path = create_test_runner(project_dir, "circuit", inputs, input_types)
+        runner_path = create_prove_runner(project_dir, "circuit", inputs, input_types)
         
-        print(f"Test runner created at: {runner_path}")
+        print(f"Prove runner created at: {runner_path}")
         
-        assert runner_path.exists(), "Test runner should exist"
+        assert runner_path.exists(), "Prove runner should exist"
         
         content = runner_path.read_text()
-        print("\nTest runner content (first 500 chars):")
+        print("\nProve runner content (first 500 chars):")
         print("-" * 40)
         print(content[:500])
         print("-" * 40)
         
         assert "Field(5n)" in content, "Should contain Field(5n)"
         assert "Field(3n)" in content, "Should contain Field(3n)"
-        assert "circuit.compile()" in content, "Should call circuit.compile()"
         assert "circuit.compute" in content, "Should call circuit.compute"
+        assert "proof" in content.lower(), "Should handle proof"
         
-        print("✓ Test runner creation test passed!")
+        print("✓ Prove runner creation test passed!")
     
     return True
 
 
 def test_full_execution(skip_if_no_npm: bool = True):
     """
-    Test full circuit execution.
+    Test full circuit execution using stage-based pipeline.
     
     This test uses the programs-mina directory which has o1js installed.
     """
     print("\n" + "="*60)
-    print("TEST: Full Execution (using programs-mina)")
+    print("TEST: Full Execution (Stage-Based Pipeline)")
     print("="*60)
     
     # Use programs-mina directory which has o1js installed
@@ -260,50 +262,60 @@ def test_full_execution(skip_if_no_npm: bool = True):
         print(f"Project: {project_dir}")
         print(f"Generated circuit.ts")
         
-        # Compile TypeScript
-        print("Compiling TypeScript...")
-        compile_status = compile_typescript(project_dir, timeout=60.0)
+        # Stage 0: Compile TypeScript
+        print("\nStage 0: Compiling TypeScript...")
+        ts_success, ts_time, ts_error = execute_ts_compile(project_dir, timeout=60.0)
         
-        if compile_status.is_failure():
-            print(f"TypeScript compilation failed:")
-            print(f"  stdout: {compile_status.stdout[:300]}")
-            print(f"  stderr: {compile_status.stderr[:300]}")
+        if not ts_success:
+            print(f"TypeScript compilation failed: {ts_error}")
             return False
         
-        print("TypeScript compiled successfully")
+        print(f"TypeScript compiled successfully in {ts_time:.2f}s")
         
-        # Execute circuit
+        # Stage 1: Compile ZkProgram
+        print("\nStage 1: Compiling ZkProgram (this may take a while)...")
+        zk_success, zk_time, zk_error = execute_zk_compile(project_dir, timeout=300.0)
+        
+        if not zk_success:
+            print(f"ZkProgram compilation failed: {zk_error}")
+            return False
+        
+        print(f"ZkProgram compiled successfully in {zk_time:.2f}s")
+        
+        # Stage 2: Prove
         inputs = {"in0": "5", "in1": "3"}
         input_types = ["Field", "Field"]
         
-        print(f"Executing with inputs: {inputs}")
+        print(f"\nStage 2: Proving with inputs: {inputs}")
+        prove_success, prove_time, output, prove_error = execute_prove(
+            project_dir, inputs, input_types, timeout=300.0
+        )
         
-        # Create test runner
-        create_test_runner(project_dir, "circuit", inputs, input_types)
+        if not prove_success:
+            print(f"Proving failed: {prove_error}")
+            return False
         
-        # Run test runner
-        print("Running circuit (this may take a while for compilation)...")
-        exec_status = run_test_runner(project_dir, timeout=300.0)
-        success, output, error = parse_execution_result(exec_status)
-        
-        print(f"\nExecution success: {success}")
+        print(f"Proving succeeded in {prove_time:.2f}s")
         print(f"Output: {output}")
-        print(f"Error: {error}")
         
-        if success:
-            print("✓ Full execution test passed!")
-            # Check output is 5 + 3 = 8
-            if output == "8":
-                print("✓ Output value correct (5 + 3 = 8)")
-            else:
-                print(f"⚠ Output value unexpected: {output} (expected 8)")
+        # Check output is 5 + 3 = 8
+        if output == "8":
+            print("✓ Output value correct (5 + 3 = 8)")
         else:
-            print(f"✗ Execution failed: {error}")
-            if exec_status:
-                print(f"stdout: {exec_status.stdout[:500]}")
-                print(f"stderr: {exec_status.stderr[:500]}")
+            print(f"⚠ Output value unexpected: {output} (expected 8)")
         
-        return success
+        # Stage 3: Verify
+        print("\nStage 3: Verifying proof...")
+        verify_success, verify_time, verify_error = execute_verify(project_dir, timeout=60.0)
+        
+        if not verify_success:
+            print(f"Verification failed: {verify_error}")
+            return False
+        
+        print(f"Verification succeeded in {verify_time:.2f}s")
+        print("✓ Full execution test passed!")
+        
+        return True
         
     finally:
         # Clean up test files
@@ -322,7 +334,7 @@ def main():
         ("Code Generation", test_code_generation),
         ("Project Setup", test_project_setup),
         ("Input Generation", test_input_generation),
-        ("Test Runner Creation", test_test_runner_creation),
+        ("Prove Runner Creation", test_prove_runner_creation),
         ("Full Execution", lambda: test_full_execution(skip_if_no_npm=True)),
     ]
     
