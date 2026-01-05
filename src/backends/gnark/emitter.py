@@ -82,6 +82,15 @@ class EmitVisitor():
         for stmt in node.statements:
             self.visit(stmt)
             self.buffer.write("\n")
+
+
+        # Ensure all always-imported packages are referenced to avoid Go unused import errors.
+        # This is necessary because the code generator may emit imports (e.g., math/big, bits, cmp) that are not always used,
+        # and Go treats unused imports as compilation errors. These dummy references are safe even if the package is used elsewhere.
+        self.buffer.write(f"{self.current_tabs}_ = big.NewInt\n")
+        self.buffer.write(f"{self.current_tabs}_ = bits.ToBinary\n")
+        self.buffer.write(f"{self.current_tabs}_ = cmp.IsLess\n")
+
         # finally return nil (no error)
         self.buffer.write(f"{self.current_tabs}return nil // no error\n")
         self.tabs -= 1
@@ -114,6 +123,8 @@ class EmitVisitor():
             self.buffer.write("\t\"github.com/Veridise/picus_gnark\"\n")
             self.buffer.write("\t\"github.com/consensys/gnark-crypto/ecc\"\n")
             self.buffer.write("\t\"github.com/consensys/gnark/frontend\"\n")
+            self.buffer.write("\t\"github.com/consensys/gnark/std/math/bits\"\n")
+            self.buffer.write("\t\"github.com/consensys/gnark/std/math/cmp\"\n")
             self.buffer.write(")\n\n")
         
         self.visit_circuit_struct(node.circuit_struct)

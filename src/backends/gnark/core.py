@@ -91,8 +91,14 @@ def run_gnark_metamorphic_tests_with_picus_oracle \
     
         picus_result = run_picus_check(gnark_code_tf)
 
-        # Save circuits if error detected
-        has_error = picus_result.constraint_level == ConstraintLevel.UNDER_CONSTRAINED
+        # Save circuits if error detected:``
+        # - UNDER_CONSTRAINED: transformation introduced under-constrained circuit
+        # - COMPILATION_FAILURE: transformation produced code that doesn't compile
+        #   (original circuit compiled successfully since it passed PICUS check)
+        has_error = picus_result.constraint_level in (
+            ConstraintLevel.UNDER_CONSTRAINED,
+            ConstraintLevel.COMPILATION_FAILURE
+        )
         if has_error:
             save_error_metamorphic_circuit_pair(report_dir, gnark_code, gnark_code_tf)
 

@@ -6,8 +6,19 @@ WORKDIR /workspace
 RUN go mod init circuzz_picus_check && \
 	go get github.com/Veridise/picus_gnark@latest && \
 	go get github.com/consensys/gnark@v0.9.1 && \
-	go get github.com/consensys/gnark-crypto@v0.12.1 && \
-	go mod download
+	go get github.com/consensys/gnark-crypto@v0.12.1
+
+# Create a stub file that imports the required packages so go mod tidy keeps them
+RUN echo 'package main\n\
+import (\n\
+	_ "github.com/Veridise/picus_gnark"\n\
+	_ "github.com/consensys/gnark/frontend"\n\
+	_ "github.com/consensys/gnark-crypto/ecc"\n\
+	_ "github.com/consensys/gnark/std/math/bits"\n\
+	_ "github.com/consensys/gnark/std/math/cmp"\n\
+)\n\
+func main() {}' > stub.go && \
+	go mod tidy
 
 
 # --- Stage 1: final image based on the Picus base image ---
@@ -26,12 +37,15 @@ RUN apt-get update && \
 # add Go to PATH
 ENV PATH="/usr/local/go/bin:${PATH}"
 
-# copy Go module cache and go.sum from the build stage
+# copy Go module cache from the build stage
 COPY --from=gobuilder /go/pkg/mod /go/pkg/mod
-COPY --from=gobuilder /workspace/go.sum /go/go.sum
 
 # ensure go finds the pre-fetched module cache
 ENV GOMODCACHE="/go/pkg/mod"
+
+# create picus base project with pre-resolved go.mod and go.sum
+COPY --from=gobuilder /workspace/go.mod /circuzz/gnark/picus_base/go.mod
+COPY --from=gobuilder /workspace/go.sum /circuzz/gnark/picus_base/go.sum
 
 # ------------------------------------- Setting up Picus -------------------------------------
 RUN git clone https://github.com/Veridise/Picus.git /Picus

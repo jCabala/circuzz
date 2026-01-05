@@ -229,63 +229,25 @@ def create_tsconfig(project_dir: Path) -> Path:
 #                  Stage-Based Test Runners
 # ================================================================
 
-COMPILE_RUNNER_FILENAME = "compile-runner.mjs"
-PROVE_RUNNER_FILENAME = "prove-runner.mjs"
+COMPILE_AND_PROVE_RUNNER_FILENAME = "compile-and-prove-runner.mjs"
+BATCH_RUNNER_FILENAME = "batch-runner.mjs"
+BATCH_INPUTS_FILENAME = "batch-inputs.json"
+BATCH_RESULTS_FILENAME = "batch-results.json"
 VERIFY_RUNNER_FILENAME = "verify-runner.mjs"
 VK_FILENAME = "verification-key.json"
 PROOF_FILENAME = "proof.json"
 
 
-def create_compile_runner(project_dir: Path, circuit_name: str) -> Path:
-    """
-    Create a runner that only compiles the ZkProgram.
-    Outputs verification key to verification-key.json.
-    """
-    runner_code = f'''// Stage 1: Compile ZkProgram
-import {{ circuit }} from './{circuit_name}.js';
-import fs from 'fs';
-
-async function main() {{
-    try {{
-        const startTime = Date.now();
-        const {{ verificationKey }} = await circuit.compile();
-        const elapsedTime = Date.now() - startTime;
-        
-        // Save verification key
-        fs.writeFileSync('{VK_FILENAME}', JSON.stringify(verificationKey, null, 2));
-        
-        console.log(JSON.stringify({{
-            success: true,
-            stage: "compile",
-            time_ms: elapsedTime
-        }}));
-    }} catch (error) {{
-        console.log(JSON.stringify({{
-            success: false,
-            stage: "compile",
-            error: error.message
-        }}));
-        process.exit(1);
-    }}
-}}
-
-main();
-'''
-    path = project_dir / COMPILE_RUNNER_FILENAME
-    path.write_text(runner_code)
-    return path
-
-
-def create_prove_runner(
+def create_compile_and_prove_runner(
     project_dir: Path,
     circuit_name: str,
     inputs: dict[str, str],
     input_types: list[str],
 ) -> Path:
     """
-    Create a runner that proves the circuit with given inputs.
-    Requires verification key from compile stage.
-    Outputs proof to proof.json.
+    Create a merged runner that compiles and proves in a single process.
+    This avoids double compilation since o1js caches provers in memory.
+    Reports both compile_time_ms and prove_time_ms separately.
     """
     # Build input arguments with correct types
     input_args = []
@@ -298,21 +260,25 @@ def create_prove_runner(
     
     inputs_str = ", ".join(input_args)
     
-    runner_code = f'''// Stage 2: Prove circuit
+    runner_code = f'''// Merged: Compile + Prove circuit (single process to avoid double compilation)
 import {{ Field, Bool }} from 'o1js';
 import {{ circuit }} from './{circuit_name}.js';
 import fs from 'fs';
 
 async function main() {{
     try {{
-        // Load verification key (ensures circuit is compiled)
-        if (!fs.existsSync('{VK_FILENAME}')) {{
-            throw new Error('Verification key not found. Run compile stage first.');
-        }}
+        // Stage 1: Compile ZkProgram
+        const compileStart = Date.now();
+        const {{ verificationKey }} = await circuit.compile();
+        const compile_time_ms = Date.now() - compileStart;
         
-        const startTime = Date.now();
+        // Save verification key
+        fs.writeFileSync('{VK_FILENAME}', JSON.stringify(verificationKey, null, 2));
+        
+        // Stage 2: Prove with inputs (prover is now cached in memory)
+        const proveStart = Date.now();
         const result = await circuit.compute({inputs_str});
-        const elapsedTime = Date.now() - startTime;
+        const prove_time_ms = Date.now() - proveStart;
         
         // Extract public output
         let outputStr;
@@ -333,14 +299,17 @@ async function main() {{
         
         console.log(JSON.stringify({{
             success: true,
-            stage: "prove",
-            time_ms: elapsedTime,
+            stage: "compile_and_prove",
+            compile_time_ms,
+            prove_time_ms,
             public_output: outputStr
         }}));
     }} catch (error) {{
+        // Determine which stage failed based on whether VK exists
+        const stage = fs.existsSync('{VK_FILENAME}') ? "prove" : "compile";
         console.log(JSON.stringify({{
             success: false,
-            stage: "prove",
+            stage,
             error: error.message
         }}));
         process.exit(1);
@@ -349,7 +318,132 @@ async function main() {{
 
 main();
 '''
-    path = project_dir / PROVE_RUNNER_FILENAME
+    path = project_dir / COMPILE_AND_PROVE_RUNNER_FILENAME
+    path.write_text(runner_code)
+    return path
+
+
+def create_batch_runner(
+    project_dir: Path,
+    circuit_name: str,
+    input_types: list[str],
+) -> Path:
+    """
+    Create a batch runner that compiles ONCE and proves with MULTIPLE input sets.
+    This is a major optimization: compile once (~60-130s) then prove many times (~2-5s each).
+    
+    The runner reads inputs from batch-inputs.json and writes results to batch-results.json.
+    Each iteration's results include: success, prove_time_ms, public_output, error.
+    """
+    # Build the input parsing logic based on types
+    input_parsing = []
+    for i, typ in enumerate(input_types):
+        if typ == "Bool":
+            input_parsing.append(f'inputs[{i}] === "true" ? Bool(true) : Bool(false)')
+        else:
+            input_parsing.append(f'Field(BigInt(inputs[{i}]))')
+    
+    input_conversion = ", ".join(input_parsing)
+    
+    runner_code = f'''// Batch Runner: Compile ONCE, prove MULTIPLE times
+// This avoids recompiling the ZkProgram for each iteration (major speedup!)
+import {{ Field, Bool }} from 'o1js';
+import {{ circuit }} from './{circuit_name}.js';
+import fs from 'fs';
+
+async function main() {{
+    const results = {{
+        compile_success: false,
+        compile_time_ms: 0,
+        compile_error: null,
+        iterations: []
+    }};
+    
+    try {{
+        // Load all input sets
+        const batchInputs = JSON.parse(fs.readFileSync('{BATCH_INPUTS_FILENAME}', 'utf-8'));
+        
+        // Stage 1: Compile ZkProgram ONCE
+        console.error('Compiling circuit...');
+        const compileStart = Date.now();
+        const {{ verificationKey }} = await circuit.compile();
+        results.compile_time_ms = Date.now() - compileStart;
+        results.compile_success = true;
+        console.error(`Compilation completed in ${{results.compile_time_ms}}ms`);
+        
+        // Save verification key (for verify stage)
+        fs.writeFileSync('{VK_FILENAME}', JSON.stringify(verificationKey, null, 2));
+        
+        // Stage 2: Prove with each input set (prover is cached in memory!)
+        for (let i = 0; i < batchInputs.length; i++) {{
+            const iterResult = {{
+                iteration: i,
+                success: false,
+                prove_time_ms: 0,
+                public_output: null,
+                error: null
+            }};
+            
+            try {{
+                const inputs = batchInputs[i];
+                console.error(`Proving iteration ${{i + 1}}/${{batchInputs.length}}...`);
+                
+                // Convert inputs to o1js types
+                const typedInputs = [{input_conversion}];
+                
+                const proveStart = Date.now();
+                const result = await circuit.compute(...typedInputs);
+                iterResult.prove_time_ms = Date.now() - proveStart;
+                iterResult.success = true;
+                
+                // Extract public output
+                if (result.publicOutput === undefined) {{
+                    iterResult.public_output = null;
+                }} else if (typeof result.publicOutput.toString === 'function') {{
+                    iterResult.public_output = result.publicOutput.toString();
+                }} else {{
+                    iterResult.public_output = JSON.stringify(result.publicOutput);
+                }}
+                
+                // Save proof for last iteration (for verify stage)
+                if (i === batchInputs.length - 1) {{
+                    const proofJson = result.proof.toJSON();
+                    fs.writeFileSync('{PROOF_FILENAME}', JSON.stringify({{
+                        proof: proofJson,
+                        publicOutput: iterResult.public_output
+                    }}, null, 2));
+                }}
+                
+                console.error(`  Iteration ${{i + 1}} proved in ${{iterResult.prove_time_ms}}ms`);
+            }} catch (error) {{
+                iterResult.error = error.message;
+                console.error(`  Iteration ${{i + 1}} failed: ${{error.message}}`);
+            }}
+            
+            results.iterations.push(iterResult);
+        }}
+        
+    }} catch (error) {{
+        // Compilation failed
+        results.compile_error = error.message;
+        console.error(`Compilation failed: ${{error.message}}`);
+    }}
+    
+    // Write results to file (for Python to read)
+    fs.writeFileSync('{BATCH_RESULTS_FILENAME}', JSON.stringify(results, null, 2));
+    
+    // Also output summary to stdout
+    console.log(JSON.stringify({{
+        success: results.compile_success,
+        compile_time_ms: results.compile_time_ms,
+        iterations_count: results.iterations.length,
+        iterations_success: results.iterations.filter(i => i.success).length
+    }}));
+}}
+
+main();
+'''
+    path = project_dir / BATCH_RUNNER_FILENAME
     path.write_text(runner_code)
     return path
 
@@ -627,69 +721,42 @@ def execute_ts_compile(
     return True, status.delta_time, None
 
 
-def execute_zk_compile(
-    project_dir: Path,
-    timeout: float | None = 300.0,
-) -> tuple[bool, float | None, str | None]:
-    """
-    Stage 1: Compile ZkProgram (generate verification key).
-    
-    Args:
-        project_dir: Project directory with compiled JavaScript
-        timeout: Compilation timeout
-    
-    Returns:
-        Tuple of (success, compile_time, error_message)
-    """
-    # Create compile runner if not exists
-    compile_runner = project_dir / COMPILE_RUNNER_FILENAME
-    if not compile_runner.exists():
-        create_compile_runner(project_dir, "circuit")
-    
-    # Check if already compiled
-    vk_file = project_dir / VK_FILENAME
-    if vk_file.exists():
-        logger.debug(f"Reusing compiled ZkProgram in {project_dir}")
-        return True, 0.0, None
-    
-    logger.debug(f"Compiling ZkProgram in {project_dir}...")
-    status = run_stage_runner(project_dir, COMPILE_RUNNER_FILENAME, timeout=timeout)
-    success, result, error = parse_stage_result(status)
-    
-    compile_time = result.get("time_ms", 0) / 1000.0 if result else status.delta_time
-    
-    return success, compile_time, error
-
-
-def execute_prove(
+def execute_compile_and_prove(
     project_dir: Path,
     inputs: dict[str, str],
     input_types: list[str],
     timeout: float | None = 300.0,
-) -> tuple[bool, float | None, str | None, str | None]:
+) -> tuple[bool, float | None, float | None, str | None, str | None, str | None]:
     """
-    Stage 2: Generate proof with given inputs.
+    Merged Stage: Compile ZkProgram and generate proof in a single process.
+    This avoids double compilation since o1js caches provers in memory only.
     
     Args:
-        project_dir: Project directory with compiled ZkProgram
+        project_dir: Project directory with compiled JavaScript
         inputs: Input values
         input_types: Types of inputs
-        timeout: Proving timeout
+        timeout: Total timeout for compile + prove
     
     Returns:
-        Tuple of (success, prove_time, public_output, error_message)
+        Tuple of (success, compile_time, prove_time, public_output, failed_stage, error_message)
+        failed_stage is "compile" or "prove" if success is False
     """
-    # Create prove runner with inputs
-    create_prove_runner(project_dir, "circuit", inputs, input_types)
+    # Create merged runner with inputs
+    create_compile_and_prove_runner(project_dir, "circuit", inputs, input_types)
     
-    logger.debug(f"Proving circuit in {project_dir} with inputs: {inputs}")
-    status = run_stage_runner(project_dir, PROVE_RUNNER_FILENAME, timeout=timeout)
+    logger.debug(f"Compiling and proving circuit in {project_dir} with inputs: {inputs}")
+    status = run_stage_runner(project_dir, COMPILE_AND_PROVE_RUNNER_FILENAME, timeout=timeout)
     success, result, error = parse_stage_result(status)
     
-    prove_time = result.get("time_ms", 0) / 1000.0 if result else status.delta_time
-    public_output = result.get("public_output") if result else None
-    
-    return success, prove_time, public_output, error
+    if success and result:
+        compile_time = result.get("compile_time_ms", 0) / 1000.0
+        prove_time = result.get("prove_time_ms", 0) / 1000.0
+        public_output = result.get("public_output")
+        return True, compile_time, prove_time, public_output, None, None
+    else:
+        # Determine which stage failed
+        failed_stage = result.get("stage", "compile") if result else "compile"
+        return False, None, None, None, failed_stage, error
 
 
 def execute_verify(
@@ -720,6 +787,100 @@ def execute_verify(
     return success, verify_time, error
 
 
+@dataclass
+class BatchIterationResult:
+    """Result of a single iteration within a batch run."""
+    iteration: int
+    success: bool
+    prove_time: float | None
+    public_output: str | None
+    error: str | None
+
+
+@dataclass
+class BatchResult:
+    """Result of running a batch of iterations for a single circuit."""
+    compile_success: bool
+    compile_time: float | None
+    compile_error: str | None
+    iterations: list[BatchIterationResult]
+
+
+def execute_batch_compile_and_prove(
+    project_dir: Path,
+    all_inputs: list[dict[str, str]],
+    input_types: list[str],
+    timeout: float | None = 600.0,
+) -> BatchResult:
+    """
+    Batch execution: Compile ONCE and prove with MULTIPLE input sets.
+    This is a major optimization over running compile+prove for each iteration.
+    
+    Args:
+        project_dir: Project directory with compiled JavaScript
+        all_inputs: List of input dictionaries (one per iteration)
+        input_types: Types of inputs
+        timeout: Total timeout for compile + all proves
+    
+    Returns:
+        BatchResult with compile results and list of iteration results
+    """
+    # Create batch runner
+    create_batch_runner(project_dir, "circuit", input_types)
+    
+    # Write inputs to JSON file (sorted keys for consistency)
+    inputs_for_json = []
+    for inputs in all_inputs:
+        # Convert dict to list (sorted by key) for JavaScript to consume
+        sorted_values = [inputs[k] for k in sorted(inputs.keys())]
+        inputs_for_json.append(sorted_values)
+    
+    inputs_file = project_dir / BATCH_INPUTS_FILENAME
+    inputs_file.write_text(json.dumps(inputs_for_json))
+    
+    logger.debug(f"Running batch compile+prove in {project_dir} with {len(all_inputs)} iterations")
+    status = run_stage_runner(project_dir, BATCH_RUNNER_FILENAME, timeout=timeout)
+    
+    # Read results from file (more reliable than parsing stdout)
+    results_file = project_dir / BATCH_RESULTS_FILENAME
+    if results_file.exists():
+        try:
+            raw_results = json.loads(results_file.read_text())
+            
+            iterations = []
+            for iter_data in raw_results.get("iterations", []):
+                iterations.append(BatchIterationResult(
+                    iteration=iter_data.get("iteration", 0),
+                    success=iter_data.get("success", False),
+                    prove_time=iter_data.get("prove_time_ms", 0) / 1000.0 if iter_data.get("prove_time_ms") else None,
+                    public_output=iter_data.get("public_output"),
+                    error=iter_data.get("error"),
+                ))
+            
+            return BatchResult(
+                compile_success=raw_results.get("compile_success", False),
+                compile_time=raw_results.get("compile_time_ms", 0) / 1000.0 if raw_results.get("compile_time_ms") else None,
+                compile_error=raw_results.get("compile_error"),
+                iterations=iterations,
+            )
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.error(f"Failed to parse batch results: {e}")
+    
+    # Fallback if results file doesn't exist or is malformed
+    error_msg = "batch execution failed"
+    if status.is_timeout:
+        error_msg = "timeout"
+    elif status.stderr:
+        error_msg = remove_ansi_escape_sequences(status.stderr)[:200]
+    
+    return BatchResult(
+        compile_success=False,
+        compile_time=None,
+        compile_error=error_msg,
+        iterations=[],
+    )
+
+
 # ================================================================
 #                     Metamorphic Testing
 # ================================================================
@@ -743,20 +904,18 @@ def run_single_iteration(
     c2_project: Path,
     inputs: dict[str, str],
     input_types: list[str],
-    run_prove_and_verify: bool = True,
+    run_verify: bool = True,
     ts_compile_timeout: float | None = 60.0,
-    zk_compile_timeout: float | None = 300.0,
-    prove_timeout: float | None = 300.0,
+    compile_and_prove_timeout: float | None = 300.0,
     verify_timeout: float | None = 60.0,
 ) -> TestIteration:
     """
-    Run a single metamorphic test iteration with separated pipeline stages.
+    Run a single metamorphic test iteration with merged compile+prove pipeline.
     
     Pipeline Stages:
     1. TypeScript Compile (tsc) - compile .ts to .js
-    2. ZkProgram Compile - generate verification key
-    3. Prove - generate proof with inputs
-    4. Verify - verify the proof (optional, controlled by run_prove_and_verify)
+    2. Compile + Prove (merged) - compile ZkProgram and generate proof in one process
+    3. Verify - verify the proof (optional)
     
     Metamorphic testing logic:
     - If both circuits fail with assertion errors, this is NOT an error (ignored)
@@ -769,10 +928,9 @@ def run_single_iteration(
         c2_project: Transformed circuit project directory
         inputs: Input values
         input_types: Types of inputs
-        run_prove_and_verify: Whether to run verify stage
+        run_verify: Whether to run verify stage
         ts_compile_timeout: TypeScript compilation timeout
-        zk_compile_timeout: ZkProgram compilation timeout  
-        prove_timeout: Proving timeout
+        compile_and_prove_timeout: Merged compile+prove timeout
         verify_timeout: Verification timeout
     
     Returns:
@@ -809,84 +967,62 @@ def run_single_iteration(
         return iteration
     
     # ================================================================
-    # Stage 1: ZkProgram Compilation (for both circuits)
+    # Stage 1: Compile + Prove (merged, for both circuits)
     # ================================================================
     
-    logger.debug("Stage 1: ZkProgram compilation...")
+    logger.debug("Stage 1: Compile and prove (merged)...")
     
-    # C1 ZkProgram compile
-    c1_zk_success, c1_zk_time, c1_zk_error = execute_zk_compile(c1_project, zk_compile_timeout)
-    iteration.c1_zk_compile = c1_zk_success
-    iteration.c1_zk_compile_time = c1_zk_time
-    
-    if not c1_zk_success:
-        iteration.error = f"c1 zk compilation failed: {c1_zk_error}"
-        logger.error(f"c1 ZkProgram compilation failed: {c1_zk_error}")
-        return iteration
-    
-    # C2 ZkProgram compile
-    c2_zk_success, c2_zk_time, c2_zk_error = execute_zk_compile(c2_project, zk_compile_timeout)
-    iteration.c2_zk_compile = c2_zk_success
-    iteration.c2_zk_compile_time = c2_zk_time
-    
-    if not c2_zk_success:
-        iteration.error = f"c2 zk compilation failed: {c2_zk_error}"
-        logger.error(f"c2 ZkProgram compilation failed: {c2_zk_error}")
-        return iteration
-    
-    # ================================================================
-    # Stage 2: Proving (for both circuits)
-    # ================================================================
-    
-    logger.debug("Stage 2: Proving...")
-    
-    # C1 Prove
-    c1_prove_success, c1_prove_time, c1_output, c1_prove_error = execute_prove(
-        c1_project, inputs, input_types, prove_timeout
+    # C1 Compile + Prove
+    c1_success, c1_compile_time, c1_prove_time, c1_output, c1_failed_stage, c1_error = execute_compile_and_prove(
+        c1_project, inputs, input_types, compile_and_prove_timeout
     )
-    iteration.c1_prove = c1_prove_success
+    iteration.c1_zk_compile = c1_success or c1_failed_stage == "prove"  # compile succeeded if we got to prove
+    iteration.c1_zk_compile_time = c1_compile_time
+    iteration.c1_prove = c1_success
     iteration.c1_prove_time = c1_prove_time
     iteration.c1_output = c1_output
     
-    # C2 Prove (always run even if c1 failed - for metamorphic comparison)
-    c2_prove_success, c2_prove_time, c2_output, c2_prove_error = execute_prove(
-        c2_project, inputs, input_types, prove_timeout
+    # C2 Compile + Prove (always run for metamorphic comparison)
+    c2_success, c2_compile_time, c2_prove_time, c2_output, c2_failed_stage, c2_error = execute_compile_and_prove(
+        c2_project, inputs, input_types, compile_and_prove_timeout
     )
-    iteration.c2_prove = c2_prove_success
+    iteration.c2_zk_compile = c2_success or c2_failed_stage == "prove"  # compile succeeded if we got to prove
+    iteration.c2_zk_compile_time = c2_compile_time
+    iteration.c2_prove = c2_success
     iteration.c2_prove_time = c2_prove_time
     iteration.c2_output = c2_output
     
     # ================================================================
-    # Metamorphic Comparison (after proving)
+    # Metamorphic Comparison
     # ================================================================
     
-    c1_assertion_fail = not c1_prove_success and is_assertion_error(c1_prove_error)
-    c2_assertion_fail = not c2_prove_success and is_assertion_error(c2_prove_error)
+    c1_assertion_fail = not c1_success and is_assertion_error(c1_error)
+    c2_assertion_fail = not c2_success and is_assertion_error(c2_error)
     
     # Case 1: Both failed with assertions - this is OK (ignored, not a metamorphic error)
     if c1_assertion_fail and c2_assertion_fail:
-        iteration.c1_ignored_error = c1_prove_error
-        iteration.c2_ignored_error = c2_prove_error
-        logger.debug(f"Both circuits failed with assertions (ignored): c1={c1_prove_error}, c2={c2_prove_error}")
+        iteration.c1_ignored_error = c1_error
+        iteration.c2_ignored_error = c2_error
+        logger.debug(f"Both circuits failed with assertions (ignored): c1={c1_error}, c2={c2_error}")
         return iteration
     
     # Case 2: c1 failed but c2 succeeded - metamorphic violation!
-    if not c1_prove_success and c2_prove_success:
+    if not c1_success and c2_success:
         iteration.error = MinaError.METAMORPHIC_VIOLATION_EXECUTION
-        logger.warning(f"Metamorphic violation: c1 prove failed ({c1_prove_error}) but c2 succeeded")
+        logger.warning(f"Metamorphic violation: c1 failed at {c1_failed_stage} ({c1_error}) but c2 succeeded")
         return iteration
     
     # Case 3: c1 succeeded but c2 failed - metamorphic violation!
-    if c1_prove_success and not c2_prove_success:
+    if c1_success and not c2_success:
         iteration.error = MinaError.METAMORPHIC_VIOLATION_EXECUTION
-        logger.warning(f"Metamorphic violation: c1 prove succeeded but c2 failed ({c2_prove_error})")
+        logger.warning(f"Metamorphic violation: c1 succeeded but c2 failed at {c2_failed_stage} ({c2_error})")
         return iteration
     
     # Case 4: Both failed with non-assertion errors
-    if not c1_prove_success and not c2_prove_success:
-        iteration.c1_ignored_error = c1_prove_error
-        iteration.c2_ignored_error = c2_prove_error
-        logger.debug(f"Both circuits prove failed (ignored): c1={c1_prove_error}, c2={c2_prove_error}")
+    if not c1_success and not c2_success:
+        iteration.c1_ignored_error = c1_error
+        iteration.c2_ignored_error = c2_error
+        logger.debug(f"Both circuits failed (ignored): c1={c1_error}, c2={c2_error}")
         return iteration
     
     # Case 5: Both succeeded - check outputs match
@@ -895,14 +1031,14 @@ def run_single_iteration(
         logger.warning(f"Diverging outputs: c1={c1_output}, c2={c2_output}")
         return iteration
     
-    logger.debug(f"Prove stage passed: both outputs = {c1_output}")
+    logger.debug(f"Compile+prove stage passed: both outputs = {c1_output}")
     
     # ================================================================
-    # Stage 3: Verification (optional, controlled by online tuning)
+    # Stage 2: Verification (optional)
     # ================================================================
     
-    if not run_prove_and_verify:
-        logger.debug("Skipping verify stage (online tuning)")
+    if not run_verify:
+        logger.debug("Skipping verify stage")
         return iteration
     
     logger.debug("Stage 3: Verification...")
@@ -939,9 +1075,10 @@ def run_metamorphic_tests(
     config: MinaConfig,
     is_boolean_circuit: bool = False,
     online_tuning: 'OnlineTuning | None' = None,
+    use_batch: bool = True,
 ) -> MinaResult:
     """
-    Run metamorphic tests on a circuit pair with separated pipeline.
+    Run metamorphic tests on a circuit pair.
     
     Args:
         metamorphic_pair: Original and transformed circuit pair
@@ -951,9 +1088,48 @@ def run_metamorphic_tests(
         config: Mina test configuration
         is_boolean_circuit: Whether this is a boolean circuit
         online_tuning: Optional online tuning for prove/verify stages
+        use_batch: If True (default), use batch mode which compiles once and 
+                  proves multiple times. This is MUCH faster. Set to False
+                  for debugging or if batch mode has issues.
     
     Returns:
         MinaResult with all test iterations
+    """
+    if use_batch:
+        return run_metamorphic_tests_batch(
+            metamorphic_pair=metamorphic_pair,
+            test_seed=test_seed,
+            curve=curve,
+            working_dir=working_dir,
+            config=config,
+            is_boolean_circuit=is_boolean_circuit,
+            online_tuning=online_tuning,
+        )
+    
+    # Legacy mode: compile+prove on every iteration (slow but useful for debugging)
+    return _run_metamorphic_tests_legacy(
+        metamorphic_pair=metamorphic_pair,
+        test_seed=test_seed,
+        curve=curve,
+        working_dir=working_dir,
+        config=config,
+        is_boolean_circuit=is_boolean_circuit,
+        online_tuning=online_tuning,
+    )
+
+
+def _run_metamorphic_tests_legacy(
+    metamorphic_pair: MetamorphicCircuitPair,
+    test_seed: int,
+    curve: CurvePrime,
+    working_dir: Path,
+    config: MinaConfig,
+    is_boolean_circuit: bool = False,
+    online_tuning: 'OnlineTuning | None' = None,
+) -> MinaResult:
+    """
+    Legacy metamorphic testing: compile+prove on every iteration.
+    This is slower but useful for debugging.
     """
     result = MinaResult()
     rng = Random(test_seed)
@@ -1002,10 +1178,10 @@ def run_metamorphic_tests(
             if run_verify:
                 online_tuning.inc_prove_and_verify_exec()
         
-        # Run iteration with separated pipeline
+        # Run iteration with merged pipeline
         iteration = run_single_iteration(
             c1_project, c2_project, inputs, input_types,
-            run_prove_and_verify=run_verify,
+            run_verify=run_verify,
         )
         result.iterations.append(iteration)
         
@@ -1038,3 +1214,263 @@ def run_metamorphic_tests(
     
     return result
 
+
+def run_metamorphic_tests_batch(
+    metamorphic_pair: MetamorphicCircuitPair,
+    test_seed: int,
+    curve: CurvePrime,
+    working_dir: Path,
+    config: MinaConfig,
+    is_boolean_circuit: bool = False,
+    online_tuning: 'OnlineTuning | None' = None,
+) -> MinaResult:
+    """
+    Run metamorphic tests with batch optimization: compile once, prove many times.
+    
+    This is a significant optimization over run_metamorphic_tests() which recompiles
+    on every iteration. Here we:
+    1. TypeScript compile both circuits (once)
+    2. Generate ALL inputs upfront
+    3. Batch compile+prove: ZK compile once, prove N times with different inputs
+    4. Process all results
+    
+    Args:
+        metamorphic_pair: Original and transformed circuit pair
+        test_seed: Seed for test input generation
+        curve: Field curve for the circuits
+        working_dir: Directory for test execution
+        config: Mina test configuration
+        is_boolean_circuit: Whether this is a boolean circuit
+        online_tuning: Optional online tuning for prove/verify stages
+    
+    Returns:
+        MinaResult with all test iterations
+    """
+    result = MinaResult()
+    rng = Random(test_seed)
+    
+    c1_circuit = metamorphic_pair.fst
+    c2_circuit = metamorphic_pair.snd
+    
+    # Prepare projects
+    c1_project, c1_code = prepare_project(
+        working_dir, "c1", c1_circuit, curve, is_boolean_circuit
+    )
+    c2_project, c2_code = prepare_project(
+        working_dir, "c2", c2_circuit, curve, is_boolean_circuit
+    )
+    
+    result.original_code = c1_code
+    result.transformed_code = c2_code
+    
+    # Log generated code
+    logger.info("Original Mina/o1js Code:")
+    logger.info(c1_code)
+    logger.info("Transformed Mina/o1js Code:")
+    logger.info(c2_code)
+    
+    # ================================================================
+    # Stage 0: TypeScript Compilation (ONCE for each circuit)
+    # ================================================================
+    
+    ts_compile_timeout = 60.0
+    
+    logger.debug("Stage 0: TypeScript compilation (batch mode)...")
+    
+    c1_ts_success, c1_ts_time, c1_ts_error = execute_ts_compile(c1_project, ts_compile_timeout)
+    if not c1_ts_success:
+        # Create single failed iteration
+        iteration = TestIteration()
+        iteration.c1_ts_compile = False
+        iteration.c1_ts_compile_time = c1_ts_time
+        iteration.error = f"c1 ts compilation failed: {c1_ts_error}"
+        result.iterations.append(iteration)
+        return result
+    
+    c2_ts_success, c2_ts_time, c2_ts_error = execute_ts_compile(c2_project, ts_compile_timeout)
+    if not c2_ts_success:
+        iteration = TestIteration()
+        iteration.c1_ts_compile = True
+        iteration.c1_ts_compile_time = c1_ts_time
+        iteration.c2_ts_compile = False
+        iteration.c2_ts_compile_time = c2_ts_time
+        iteration.error = f"c2 ts compilation failed: {c2_ts_error}"
+        result.iterations.append(iteration)
+        return result
+    
+    logger.debug(f"TypeScript compilation done: c1={c1_ts_time:.2f}s, c2={c2_ts_time:.2f}s")
+    
+    # ================================================================
+    # Generate ALL inputs upfront
+    # ================================================================
+    
+    input_types = ["Bool" if is_boolean_circuit else "Field"] * len(c1_circuit.inputs)
+    
+    all_inputs: list[dict[str, str]] = []
+    for i in range(config.test_iterations):
+        inputs = random_input(
+            c1_circuit.inputs,
+            input_types,
+            curve,
+            config.boundary_input_probability,
+            rng,
+        )
+        all_inputs.append(inputs)
+    
+    logger.debug(f"Generated {len(all_inputs)} input sets for batch execution")
+    
+    # ================================================================
+    # Stage 1: Batch Compile + Prove (compile ONCE, prove MANY times)
+    # ================================================================
+    
+    # Calculate generous timeout: base compile (180s) + 30s per prove iteration
+    batch_timeout = 180.0 + (30.0 * config.test_iterations)
+    
+    logger.info(f"Stage 1: Batch compile+prove (c1: {config.test_iterations} iterations)...")
+    c1_batch_result = execute_batch_compile_and_prove(
+        c1_project, all_inputs, input_types, timeout=batch_timeout
+    )
+    
+    logger.info(f"Stage 1: Batch compile+prove (c2: {config.test_iterations} iterations)...")
+    c2_batch_result = execute_batch_compile_and_prove(
+        c2_project, all_inputs, input_types, timeout=batch_timeout
+    )
+    
+    logger.debug(f"Batch execution done: c1_compile={c1_batch_result.compile_success} ({c1_batch_result.compile_time or 0:.2f}s), "
+                f"c2_compile={c2_batch_result.compile_success} ({c2_batch_result.compile_time or 0:.2f}s)")
+    
+    # ================================================================
+    # Process Results into TestIterations
+    # ================================================================
+    
+    # Handle compile failures
+    if not c1_batch_result.compile_success:
+        iteration = TestIteration()
+        iteration.c1_ts_compile = True
+        iteration.c1_ts_compile_time = c1_ts_time
+        iteration.c2_ts_compile = True
+        iteration.c2_ts_compile_time = c2_ts_time
+        iteration.c1_zk_compile = False
+        iteration.c1_zk_compile_time = c1_batch_result.compile_time
+        iteration.error = f"c1 ZK compile failed: {c1_batch_result.compile_error}"
+        result.iterations.append(iteration)
+        return result
+    
+    if not c2_batch_result.compile_success:
+        iteration = TestIteration()
+        iteration.c1_ts_compile = True
+        iteration.c1_ts_compile_time = c1_ts_time
+        iteration.c2_ts_compile = True
+        iteration.c2_ts_compile_time = c2_ts_time
+        iteration.c1_zk_compile = True
+        iteration.c1_zk_compile_time = c1_batch_result.compile_time
+        iteration.c2_zk_compile = False
+        iteration.c2_zk_compile_time = c2_batch_result.compile_time
+        iteration.error = f"c2 ZK compile failed: {c2_batch_result.compile_error}"
+        result.iterations.append(iteration)
+        return result
+    
+    # Process iteration results
+    for i in range(config.test_iterations):
+        iteration = TestIteration()
+        
+        # TS compilation times (shared across iterations, but attribute to first)
+        if i == 0:
+            iteration.c1_ts_compile = True
+            iteration.c1_ts_compile_time = c1_ts_time
+            iteration.c2_ts_compile = True
+            iteration.c2_ts_compile_time = c2_ts_time
+            iteration.c1_zk_compile = True
+            iteration.c1_zk_compile_time = c1_batch_result.compile_time
+            iteration.c2_zk_compile = True
+            iteration.c2_zk_compile_time = c2_batch_result.compile_time
+        else:
+            iteration.c1_ts_compile = True
+            iteration.c2_ts_compile = True
+            iteration.c1_zk_compile = True
+            iteration.c2_zk_compile = True
+        
+        # Get iteration results
+        c1_iter = c1_batch_result.iterations[i] if i < len(c1_batch_result.iterations) else None
+        c2_iter = c2_batch_result.iterations[i] if i < len(c2_batch_result.iterations) else None
+        
+        if c1_iter is None or c2_iter is None:
+            iteration.error = f"Missing batch results for iteration {i}"
+            result.iterations.append(iteration)
+            break
+        
+        # Prove results
+        iteration.c1_prove = c1_iter.success
+        iteration.c1_prove_time = c1_iter.prove_time
+        iteration.c1_output = c1_iter.public_output
+        
+        iteration.c2_prove = c2_iter.success
+        iteration.c2_prove_time = c2_iter.prove_time
+        iteration.c2_output = c2_iter.public_output
+        
+        # Metamorphic comparison
+        c1_success = c1_iter.success
+        c2_success = c2_iter.success
+        c1_error = c1_iter.error
+        c2_error = c2_iter.error
+        
+        c1_assertion_fail = not c1_success and is_assertion_error(c1_error)
+        c2_assertion_fail = not c2_success and is_assertion_error(c2_error)
+        
+        # Case 1: Both failed with assertions - this is OK
+        if c1_assertion_fail and c2_assertion_fail:
+            iteration.c1_ignored_error = c1_error
+            iteration.c2_ignored_error = c2_error
+            logger.debug(f"Iteration {i+1}: Both circuits failed with assertions (ignored)")
+            result.iterations.append(iteration)
+            continue
+        
+        # Case 2: c1 failed but c2 succeeded - metamorphic violation!
+        if not c1_success and c2_success:
+            iteration.error = MinaError.METAMORPHIC_VIOLATION_EXECUTION
+            logger.warning(f"Iteration {i+1}: Metamorphic violation - c1 failed but c2 succeeded")
+            result.iterations.append(iteration)
+            break
+        
+        # Case 3: c1 succeeded but c2 failed - metamorphic violation!
+        if c1_success and not c2_success:
+            iteration.error = MinaError.METAMORPHIC_VIOLATION_EXECUTION
+            logger.warning(f"Iteration {i+1}: Metamorphic violation - c1 succeeded but c2 failed")
+            result.iterations.append(iteration)
+            break
+        
+        # Case 4: Both failed with non-assertion errors
+        if not c1_success and not c2_success:
+            iteration.c1_ignored_error = c1_error
+            iteration.c2_ignored_error = c2_error
+            logger.debug(f"Iteration {i+1}: Both circuits failed (ignored)")
+            result.iterations.append(iteration)
+            continue
+        
+        # Case 5: Both succeeded - check outputs match
+        if c1_iter.public_output != c2_iter.public_output:
+            iteration.error = MinaError.DIVERGING_SIGNALS
+            logger.warning(f"Iteration {i+1}: Diverging outputs - c1={c1_iter.public_output}, c2={c2_iter.public_output}")
+            result.iterations.append(iteration)
+            break
+        
+        logger.debug(f"Iteration {i+1}: passed (output={c1_iter.public_output})")
+        result.iterations.append(iteration)
+        
+        # Update online tuning
+        if online_tuning is not None:
+            if c1_iter.prove_time:
+                online_tuning.add_prove_or_verify_time(c1_iter.prove_time)
+            if c2_iter.prove_time:
+                online_tuning.add_prove_or_verify_time(c2_iter.prove_time)
+    
+    # Add compile times to online tuning (once, at the end)
+    if online_tuning is not None:
+        online_tuning.add_general_execution_time(c1_ts_time)
+        online_tuning.add_general_execution_time(c2_ts_time)
+        if c1_batch_result.compile_time:
+            online_tuning.add_general_execution_time(c1_batch_result.compile_time)
+        if c2_batch_result.compile_time:
+            online_tuning.add_general_execution_time(c2_batch_result.compile_time)
+    
+    return result
