@@ -899,174 +899,6 @@ def is_assertion_error(error: str | None) -> bool:
     return any(pattern.lower() in error_lower for pattern in assertion_patterns)
 
 
-def run_single_iteration(
-    c1_project: Path,
-    c2_project: Path,
-    inputs: dict[str, str],
-    input_types: list[str],
-    run_verify: bool = True,
-    ts_compile_timeout: float | None = 60.0,
-    compile_and_prove_timeout: float | None = 300.0,
-    verify_timeout: float | None = 60.0,
-) -> TestIteration:
-    """
-    Run a single metamorphic test iteration with merged compile+prove pipeline.
-    
-    Pipeline Stages:
-    1. TypeScript Compile (tsc) - compile .ts to .js
-    2. Compile + Prove (merged) - compile ZkProgram and generate proof in one process
-    3. Verify - verify the proof (optional)
-    
-    Metamorphic testing logic:
-    - If both circuits fail with assertion errors, this is NOT an error (ignored)
-    - If one circuit fails and the other succeeds, this IS a metamorphic error
-    - If both succeed but outputs differ, this IS a metamorphic error
-    - Compilation errors are always real errors (code generation bug)
-    
-    Args:
-        c1_project: Original circuit project directory
-        c2_project: Transformed circuit project directory
-        inputs: Input values
-        input_types: Types of inputs
-        run_verify: Whether to run verify stage
-        ts_compile_timeout: TypeScript compilation timeout
-        compile_and_prove_timeout: Merged compile+prove timeout
-        verify_timeout: Verification timeout
-    
-    Returns:
-        TestIteration with results for all stages
-    """
-    iteration = TestIteration()
-    logger.debug(f"Starting iteration: c1={c1_project.name}, c2={c2_project.name}")
-    logger.debug(f"Inputs: {inputs}, types: {input_types}")
-    
-    # ================================================================
-    # Stage 0: TypeScript Compilation (for both circuits)
-    # ================================================================
-    
-    logger.debug("Stage 0: TypeScript compilation...")
-    
-    # C1 TypeScript compile
-    c1_ts_success, c1_ts_time, c1_ts_error = execute_ts_compile(c1_project, ts_compile_timeout)
-    iteration.c1_ts_compile = c1_ts_success
-    iteration.c1_ts_compile_time = c1_ts_time
-    
-    if not c1_ts_success:
-        iteration.error = f"c1 ts compilation failed: {c1_ts_error}"
-        logger.error(f"c1 TypeScript compilation failed: {c1_ts_error}")
-        return iteration
-    
-    # C2 TypeScript compile
-    c2_ts_success, c2_ts_time, c2_ts_error = execute_ts_compile(c2_project, ts_compile_timeout)
-    iteration.c2_ts_compile = c2_ts_success
-    iteration.c2_ts_compile_time = c2_ts_time
-    
-    if not c2_ts_success:
-        iteration.error = f"c2 ts compilation failed: {c2_ts_error}"
-        logger.error(f"c2 TypeScript compilation failed: {c2_ts_error}")
-        return iteration
-    
-    # ================================================================
-    # Stage 1: Compile + Prove (merged, for both circuits)
-    # ================================================================
-    
-    logger.debug("Stage 1: Compile and prove (merged)...")
-    
-    # C1 Compile + Prove
-    c1_success, c1_compile_time, c1_prove_time, c1_output, c1_failed_stage, c1_error = execute_compile_and_prove(
-        c1_project, inputs, input_types, compile_and_prove_timeout
-    )
-    iteration.c1_zk_compile = c1_success or c1_failed_stage == "prove"  # compile succeeded if we got to prove
-    iteration.c1_zk_compile_time = c1_compile_time
-    iteration.c1_prove = c1_success
-    iteration.c1_prove_time = c1_prove_time
-    iteration.c1_output = c1_output
-    
-    # C2 Compile + Prove (always run for metamorphic comparison)
-    c2_success, c2_compile_time, c2_prove_time, c2_output, c2_failed_stage, c2_error = execute_compile_and_prove(
-        c2_project, inputs, input_types, compile_and_prove_timeout
-    )
-    iteration.c2_zk_compile = c2_success or c2_failed_stage == "prove"  # compile succeeded if we got to prove
-    iteration.c2_zk_compile_time = c2_compile_time
-    iteration.c2_prove = c2_success
-    iteration.c2_prove_time = c2_prove_time
-    iteration.c2_output = c2_output
-    
-    # ================================================================
-    # Metamorphic Comparison
-    # ================================================================
-    
-    c1_assertion_fail = not c1_success and is_assertion_error(c1_error)
-    c2_assertion_fail = not c2_success and is_assertion_error(c2_error)
-    
-    # Case 1: Both failed with assertions - this is OK (ignored, not a metamorphic error)
-    if c1_assertion_fail and c2_assertion_fail:
-        iteration.c1_ignored_error = c1_error
-        iteration.c2_ignored_error = c2_error
-        logger.debug(f"Both circuits failed with assertions (ignored): c1={c1_error}, c2={c2_error}")
-        return iteration
-    
-    # Case 2: c1 failed but c2 succeeded - metamorphic violation!
-    if not c1_success and c2_success:
-        iteration.error = MinaError.METAMORPHIC_VIOLATION_EXECUTION
-        logger.warning(f"Metamorphic violation: c1 failed at {c1_failed_stage} ({c1_error}) but c2 succeeded")
-        return iteration
-    
-    # Case 3: c1 succeeded but c2 failed - metamorphic violation!
-    if c1_success and not c2_success:
-        iteration.error = MinaError.METAMORPHIC_VIOLATION_EXECUTION
-        logger.warning(f"Metamorphic violation: c1 succeeded but c2 failed at {c2_failed_stage} ({c2_error})")
-        return iteration
-    
-    # Case 4: Both failed with non-assertion errors
-    if not c1_success and not c2_success:
-        iteration.c1_ignored_error = c1_error
-        iteration.c2_ignored_error = c2_error
-        logger.debug(f"Both circuits failed (ignored): c1={c1_error}, c2={c2_error}")
-        return iteration
-    
-    # Case 5: Both succeeded - check outputs match
-    if c1_output != c2_output:
-        iteration.error = MinaError.DIVERGING_SIGNALS
-        logger.warning(f"Diverging outputs: c1={c1_output}, c2={c2_output}")
-        return iteration
-    
-    logger.debug(f"Compile+prove stage passed: both outputs = {c1_output}")
-    
-    # ================================================================
-    # Stage 2: Verification (optional)
-    # ================================================================
-    
-    if not run_verify:
-        logger.debug("Skipping verify stage")
-        return iteration
-    
-    logger.debug("Stage 3: Verification...")
-    
-    # C1 Verify
-    c1_verify_success, c1_verify_time, c1_verify_error = execute_verify(c1_project, verify_timeout)
-    iteration.c1_verify = c1_verify_success
-    iteration.c1_verify_time = c1_verify_time
-    
-    if not c1_verify_success:
-        iteration.error = f"c1 verification failed: {c1_verify_error}"
-        logger.error(f"c1 verification failed: {c1_verify_error}")
-        return iteration
-    
-    # C2 Verify
-    c2_verify_success, c2_verify_time, c2_verify_error = execute_verify(c2_project, verify_timeout)
-    iteration.c2_verify = c2_verify_success
-    iteration.c2_verify_time = c2_verify_time
-    
-    if not c2_verify_success:
-        iteration.error = f"c2 verification failed: {c2_verify_error}"
-        logger.error(f"c2 verification failed: {c2_verify_error}")
-        return iteration
-    
-    logger.debug("Metamorphic test passed: all stages successful")
-    return iteration
-
-
 def run_metamorphic_tests(
     metamorphic_pair: MetamorphicCircuitPair,
     test_seed: int,
@@ -1075,10 +907,9 @@ def run_metamorphic_tests(
     config: MinaConfig,
     is_boolean_circuit: bool = False,
     online_tuning: 'OnlineTuning | None' = None,
-    use_batch: bool = True,
 ) -> MinaResult:
     """
-    Run metamorphic tests on a circuit pair.
+    Run metamorphic tests on a circuit pair using batch mode only.
     
     Args:
         metamorphic_pair: Original and transformed circuit pair
@@ -1088,26 +919,11 @@ def run_metamorphic_tests(
         config: Mina test configuration
         is_boolean_circuit: Whether this is a boolean circuit
         online_tuning: Optional online tuning for prove/verify stages
-        use_batch: If True (default), use batch mode which compiles once and 
-                  proves multiple times. This is MUCH faster. Set to False
-                  for debugging or if batch mode has issues.
     
     Returns:
         MinaResult with all test iterations
     """
-    if use_batch:
-        return run_metamorphic_tests_batch(
-            metamorphic_pair=metamorphic_pair,
-            test_seed=test_seed,
-            curve=curve,
-            working_dir=working_dir,
-            config=config,
-            is_boolean_circuit=is_boolean_circuit,
-            online_tuning=online_tuning,
-        )
-    
-    # Legacy mode: compile+prove on every iteration (slow but useful for debugging)
-    return _run_metamorphic_tests_legacy(
+    return run_metamorphic_tests_batch(
         metamorphic_pair=metamorphic_pair,
         test_seed=test_seed,
         curve=curve,
@@ -1116,104 +932,6 @@ def run_metamorphic_tests(
         is_boolean_circuit=is_boolean_circuit,
         online_tuning=online_tuning,
     )
-
-
-def _run_metamorphic_tests_legacy(
-    metamorphic_pair: MetamorphicCircuitPair,
-    test_seed: int,
-    curve: CurvePrime,
-    working_dir: Path,
-    config: MinaConfig,
-    is_boolean_circuit: bool = False,
-    online_tuning: 'OnlineTuning | None' = None,
-) -> MinaResult:
-    """
-    Legacy metamorphic testing: compile+prove on every iteration.
-    This is slower but useful for debugging.
-    """
-    result = MinaResult()
-    rng = Random(test_seed)
-    
-    c1_circuit = metamorphic_pair.fst
-    c2_circuit = metamorphic_pair.snd
-    
-    # Prepare projects
-    c1_project, c1_code = prepare_project(
-        working_dir, "c1", c1_circuit, curve, is_boolean_circuit
-    )
-    c2_project, c2_code = prepare_project(
-        working_dir, "c2", c2_circuit, curve, is_boolean_circuit
-    )
-    
-    result.original_code = c1_code
-    result.transformed_code = c2_code
-    
-    # Log generated code (similar to Circom backend)
-    logger.info("Original Mina/o1js Code:")
-    logger.info(c1_code)
-    logger.info("Transformed Mina/o1js Code:")
-    logger.info(c2_code)
-    
-    # Determine input types
-    input_types = ["Bool" if is_boolean_circuit else "Field"] * len(c1_circuit.inputs)
-    
-    # Run test iterations
-    for i in range(config.test_iterations):
-        logger.info(f"Running test iteration {i + 1}/{config.test_iterations}")
-        
-        # Generate random inputs
-        inputs = random_input(
-            c1_circuit.inputs,
-            input_types,
-            curve,
-            config.boundary_input_probability,
-            rng,
-        )
-        
-        # Determine if we should run prove/verify based on online tuning
-        run_verify = True
-        if online_tuning is not None:
-            online_tuning.inc_prove_and_verify_ticks()
-            run_verify = online_tuning.is_prove_and_verify(rng)
-            if run_verify:
-                online_tuning.inc_prove_and_verify_exec()
-        
-        # Run iteration with merged pipeline
-        iteration = run_single_iteration(
-            c1_project, c2_project, inputs, input_types,
-            run_verify=run_verify,
-        )
-        result.iterations.append(iteration)
-        
-        # Update online tuning with timing info
-        if online_tuning is not None:
-            # Add compilation times as general execution time
-            if iteration.c1_ts_compile_time:
-                online_tuning.add_general_execution_time(iteration.c1_ts_compile_time)
-            if iteration.c2_ts_compile_time:
-                online_tuning.add_general_execution_time(iteration.c2_ts_compile_time)
-            if iteration.c1_zk_compile_time:
-                online_tuning.add_general_execution_time(iteration.c1_zk_compile_time)
-            if iteration.c2_zk_compile_time:
-                online_tuning.add_general_execution_time(iteration.c2_zk_compile_time)
-            
-            # Add prove/verify times
-            if iteration.c1_prove_time:
-                online_tuning.add_prove_or_verify_time(iteration.c1_prove_time)
-            if iteration.c2_prove_time:
-                online_tuning.add_prove_or_verify_time(iteration.c2_prove_time)
-            if iteration.c1_verify_time:
-                online_tuning.add_prove_or_verify_time(iteration.c1_verify_time)
-            if iteration.c2_verify_time:
-                online_tuning.add_prove_or_verify_time(iteration.c2_verify_time)
-        
-        # Stop on error
-        if iteration.is_error():
-            logger.error(f"Test iteration {i + 1} failed: {iteration.error}")
-            break
-    
-    return result
-
 
 def run_metamorphic_tests_batch(
     metamorphic_pair: MetamorphicCircuitPair,
