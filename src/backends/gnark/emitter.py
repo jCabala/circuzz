@@ -55,7 +55,10 @@ class EmitVisitor():
     def visit_circuit_struct_field(self, node: CircuitStructField):
         self.buffer.write(self.current_tabs)
         self.buffer.write(f"{node.name} frontend.Variable")
-        if node.is_public:
+        # Annotate as public input if is_public, or as output if is_output
+        if getattr(node, 'is_output', False):
+            self.buffer.write(" `gnark:\",public\"` // Picus: output")
+        elif node.is_public:
             self.buffer.write(" `gnark:\",public\"`")
 
     def visit_circuit_struct(self, node: CircuitStruct):
@@ -67,7 +70,12 @@ class EmitVisitor():
             self.buffer.write("\n")
 
             if self.add_picus_annotations:
-                self.picus_input_names.append(field.name)
+                if getattr(field, 'is_output', False):
+                    if not hasattr(self, 'picus_output_names'):
+                        self.picus_output_names = []
+                    self.picus_output_names.append(field.name)
+                else:
+                    self.picus_input_names.append(field.name)
 
         self.tabs -= 1
         self.buffer.write("}")
@@ -102,7 +110,12 @@ class EmitVisitor():
             self.buffer.write(f"picus_gnark.CircuitVarIn(circuit.{input_name})\n")
             self.buffer.write(self.current_tabs)
             self.buffer.write(f"picus_gnark.Label(circuit.{input_name}, \"{input_name}\")\n")
-
+        if hasattr(self, 'picus_output_names'):
+            for output_name in self.picus_output_names:
+                self.buffer.write(self.current_tabs)
+                self.buffer.write(f"picus_gnark.CircuitVarOut(circuit.{output_name})\n")
+                self.buffer.write(self.current_tabs)
+                self.buffer.write(f"picus_gnark.Label(circuit.{output_name}, \"{output_name}\")\n")
         self.buffer.write("\n")
 
     def add_picus_main_function(self, circuit_name: str):

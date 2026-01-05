@@ -71,9 +71,14 @@ def run_gnark_metamorphic_tests_with_picus_oracle \
         curve = rng.choice(list(GnarkCurve))
         prime = curve_to_prime(curve)
 
+        # Timeout settings for PICUS
+        PICUS_TIMEOUT_INITIAL = 60   # seconds for initial circuit
+        PICUS_TIMEOUT_TRANSFORMED = 180  # seconds for transformed circuit
+
         ir_generation_start = time.time()
-        ir, gnark_code, num_tries = generate_picus_constrained_gnark_code(prime, False, config.ir, ir_gen_seed)
-        
+        ir, gnark_code, num_tries = generate_picus_constrained_gnark_code(
+            prime, False, config.ir, ir_gen_seed, PICUS_TIMEOUT_INITIAL)
+
         logger.info(f"Generated PICUS constrained gnark code after {num_tries} tries.")
         logger.info("Original, PICUS Constrained Gnark Code:")
         logger.info(gnark_code)
@@ -88,8 +93,8 @@ def run_gnark_metamorphic_tests_with_picus_oracle \
         logger.info(gnark_code_tf)
 
         ir_rewrite_time = time.time() - ir_rewrite_start
-    
-        picus_result = run_picus_check(gnark_code_tf)
+
+        picus_result = run_picus_check(gnark_code_tf, PICUS_TIMEOUT_TRANSFORMED)
 
         # Save circuits if error detected:``
         # - UNDER_CONSTRAINED: transformation introduced under-constrained circuit

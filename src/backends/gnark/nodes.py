@@ -24,10 +24,11 @@ class CircuitStructField(ASTNode):
     <name> frontend.Variable `gnark:",public"`
     """
     name      : str
-    is_public : bool # currently only 'output' variables are public
+    is_public : bool # public input
+    is_output : bool = False # output annotation for Picus
 
     def copy(self) -> 'CircuitStructField':
-        return CircuitStructField(self.name, self.is_public)
+        return CircuitStructField(self.name, self.is_public, self.is_output)
 
 @dataclass
 class CircuitStruct(ASTNode):
