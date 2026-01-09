@@ -22,19 +22,19 @@ MINA_BOOLEAN_CONFIG=fyp_experiments/mina/config/mina-boolean.json
 
 IMAGE_MINA_DEFAULT="mina-latest"
 
-SEED=42
+SEED=2003
 VERBOSITY=3
 USE_TMP=1
 
 # Timeout settings
 T_SECONDS=0
-T_MINUTES=15
-T_HOURS=0
+T_MINUTES=0
+T_HOURS=24
 
 MINA_ARITHMETIC_NUM=1
-MINA_ARITHMETIC_CPUS=1
-MINA_BOOLEAN_NUM=0
-MINA_BOOLEAN_CPUS=1
+MINA_ARITHMETIC_CPUS=2
+MINA_BOOLEAN_NUM=1
+MINA_BOOLEAN_CPUS=2
 
 TMP_DIR=/tmp/circuzz/seed-$SEED-date-$start
 OBJ_DIR=$SCRIPT_PATH/obj/seed-$SEED-date-$start
@@ -65,6 +65,27 @@ if [[ $USE_TMP -eq 1 ]]; then
     mkdir -p $TMP_DIR
 fi
 
+function store_config() {
+    CONFIG_DST=$1
+
+    # Store the config used to run this script
+    touch $OBJ_DIR/explore_config.txt
+    echo "MINA_ARITHMETIC_CONFIG=$MINA_ARITHMETIC_CONFIG" >> $OBJ_DIR/explore_config.txt
+    echo "MINA_BOOLEAN_CONFIG=$MINA_BOOLEAN_CONFIG" >> $OBJ_DIR/explore_config.txt
+    echo "IMAGE_MINA_DEFAULT=$IMAGE_MINA_DEFAULT" >> $OBJ_DIR/explore_config.txt
+    echo "SEED=$SEED" >> $OBJ_DIR/explore_config.txt
+    echo "VERBOSITY=$VERBOSITY" >> $OBJ_DIR/explore_config.txt
+    echo "USE_TMP=$USE_TMP" >> $OBJ_DIR/explore_config.txt
+    echo "T_HOURS=$T_HOURS" >> $OBJ_DIR/explore_config.txt
+    echo "T_MINUTES=$T_MINUTES" >> $OBJ_DIR/explore_config.txt
+    echo "T_SECONDS=$T_SECONDS" >> $OBJ_DIR/explore_config.txt
+    echo "MINA_ARITHMETIC_NUM=$MINA_ARITHMETIC_NUM" >> $OBJ_DIR/explore_config.txt
+    echo "MINA_ARITHMETIC_CPUS=$MINA_ARITHMETIC_CPUS" >> $OBJ_DIR/explore_config.txt
+    echo "MINA_BOOLEAN_NUM=$MINA_BOOLEAN_NUM" >> $OBJ_DIR/explore_config.txt
+    echo "MINA_BOOLEAN_CPUS=$MINA_BOOLEAN_CPUS" >> $OBJ_DIR/explore_config.txt
+
+}
+
 # helper function (tool, image, unique-name, cpus, random, config)
 function start() {
     CONFIG=$6
@@ -80,6 +101,10 @@ function start() {
     else
         EXPLORE_WORK_DIR=$OBJ_DIR/$3/explore/working
     fi
+
+    # Store config in obj dir
+    store_config $REPORT_DIR
+
 
     mkdir -p "$EXPLORE_REP_DIR"
     mkdir -p "$LOG_DIR_RUN"
