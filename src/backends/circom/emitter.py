@@ -1,14 +1,25 @@
 from typing import cast
 import io
 
+from backends.circom.lib_path_resolver import LibPathMode, LibPathResolver
+
 from .operators import *
 from .nodes import *
 
+@dataclass(frozen=True)
+class EmitConfig():
+    constrain_equality_assertions: bool
+    constrain_sharp_inequality_assertions: bool
+
+    lib_path_mode: LibPathMode = LibPathMode.DOCKER_GLOBAL
+
 class EmitVisitor():
 
-    def __init__(self):
+    def __init__(self, emit_config: EmitConfig):
         self.indent = 0
         self.buffer = io.StringIO()
+        self.emit_config = emit_config
+        self.comparator_out_idx = 0 # Index helpful for naming outputs needed for comparator circuits is we are constraining them
 
     def emit(self, node: ASTNode) -> str:
         self.indent = 0
@@ -75,6 +86,12 @@ class EmitVisitor():
         if node.custom:
             self.buffer.write("pragma custom_templates;\n")
         self.buffer.write("\n")
+
+        # Add the necessary libraries
+        path_resolver = LibPathResolver(mode=self.emit_config.lib_path_mode)
+        if self.emit_config.constrain_sharp_inequality_assertions:
+            comparators_path = path_resolver.get_comparators_path()
+            self.buffer.write(f'include "{comparators_path}";\n\n')
 
         for stmt in node.statements:
             self.visit(stmt)
@@ -191,10 +208,60 @@ class EmitVisitor():
         self.buffer.write(")")
         self.visit_basic_block(node.block)
 
+    def _is_equality_assertion(self, node: AssertStatement) -> bool:
+        match node.condition:
+            case BinaryExpression():
+                return node.condition.operator == Operator.EQU
+            case _:
+                return False
+            
+    def _is_sharp_inequality_assertion(self, node: AssertStatement) -> bool:
+        match node.condition:
+            case BinaryExpression():
+                return node.condition.operator in [Operator.LTH, Operator.GTH]
+            case _:
+                return False
+            
     def visit_assert_statement(self, node: AssertStatement):
+        if self.emit_config.constrain_equality_assertions and self._is_equality_assertion(node):
+            self.buffer.write(self.current_indent)
+            self.visit_equality_assertion_as_constraint(node)
+            return
+        
+        if self.emit_config.constrain_sharp_inequality_assertions and self._is_sharp_inequality_assertion(node):
+            # Add new line if last line in buffer is not empty
+            if not self.buffer.getvalue().endswith("\n\n"):
+                self.buffer.write("\n")
+            
+            component_name = f"ineq_{self.comparator_out_idx}"
+            comparator = "LessThan" if node.condition.operator == Operator.LTH else "GreaterThan"
+
+            self.buffer.write(self.current_indent + f"component {component_name} = {comparator}(252);\n")
+            self.buffer.write(self.current_indent + f"{component_name}.in[0] <== ")
+            self.visit(node.condition.lhs)
+            self.buffer.write(";\n")
+            self.buffer.write(self.current_indent + f"{component_name}.in[1] <== ")
+            self.visit(node.condition.rhs)
+            self.buffer.write(";\n")
+            self.buffer.write(self.current_indent + f"{component_name}.out === 1;\n")
+
+            self.buffer.write("\n")
+            self.comparator_out_idx += 1
+            return
+            
         self.buffer.write(self.current_indent + "assert(")
         self.visit(node.condition)
         self.buffer.write(");\n")
+            
+    def visit_equality_assertion_as_constraint(self, node: AssertStatement):
+        match node.condition:
+            case BinaryExpression():
+                self.visit(node.condition.lhs)
+                self.buffer.write(" === ")
+                self.visit(node.condition.rhs)
+                self.buffer.write(";\n")
+            case _:
+                raise NotImplementedError("Expected BinaryExpression for equality assertion")
 
     def visit_log_statement(self, node: LogStatement):
         self.buffer.write(self.current_indent + "log(")

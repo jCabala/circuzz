@@ -14,6 +14,7 @@ from backends.circom.config import CircomConfig
 from backends.corset.config import CorsetConfig
 from backends.gnark.config import GnarkConfig
 from backends.noir.config import NoirConfig
+from backends.mina.config import MinaConfig
 
 #
 # Online Tuning
@@ -143,6 +144,7 @@ class ZKPLanguage(StrEnum):
     NOIR   = "noir"
     CORSET = "corset"
     GNARK  = "gnark"
+    MINA   = "mina"
 
     @classmethod
     def from_str(cls, value: str) -> 'ZKPLanguage':
@@ -155,6 +157,8 @@ class ZKPLanguage(StrEnum):
                 return ZKPLanguage.CORSET
             case "gnark":
                 return ZKPLanguage.GNARK
+            case "mina":
+                return ZKPLanguage.MINA
             case _:
                 raise NotImplementedError(f"unimplemented zkp language '{value}', try {list(ZKPLanguage)}")
 
@@ -163,7 +167,7 @@ class Config():
 
     # zkp languages
     zkp_language : ZKPLanguage
-    zkp_config   : CircomConfig | CorsetConfig | GnarkConfig | NoirConfig
+    zkp_config   : CircomConfig | CorsetConfig | GnarkConfig | NoirConfig | MinaConfig
 
     # ir configurations
     ir : IRConfig
@@ -195,6 +199,12 @@ class Config():
             f"requested language is not available, available {self.zkp_language}"
         return self.zkp_config # pyright: ignore
 
+    @property
+    def mina(self) -> MinaConfig:
+        assert self.zkp_language == ZKPLanguage.MINA, \
+            f"requested language is not available, available {self.zkp_language}"
+        return self.zkp_config # pyright: ignore
+
 
 def load_config_file(path_to_config: Path, language: str) -> Config:
     assert path_to_config.is_file(), f"Unable to load config file at location {path_to_config}"
@@ -213,6 +223,8 @@ def load_config_file(path_to_config: Path, language: str) -> Config:
         zkp_config = GnarkConfig.from_dict(json_obj["gnark"])
     elif config_zkp_language == ZKPLanguage.NOIR and "noir" in json_obj:
         zkp_config = NoirConfig.from_dict(json_obj["noir"])
+    elif config_zkp_language == ZKPLanguage.MINA and "mina" in json_obj:
+        zkp_config = MinaConfig.from_dict(json_obj["mina"])
     else:
         raise ValueError(f"unable to find configuration for '{config_zkp_language}' in {path_to_config}")
 

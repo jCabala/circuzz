@@ -24,9 +24,11 @@ class IR2GnarkVisitor():
     # temporary variables count
     __temporary_variables : int
 
-    def __init__(self):
+
+    def __init__(self, outputs_as_members: bool = False):
         self.__output_signals = set()
         self.__temporary_variables = 0
+        self.outputs_as_members = outputs_as_members
 
     def transform(self, system: IRNodes.Circuit) -> CircuitDefinitionCollection:
        return self.visit_circuit(system)
@@ -161,9 +163,16 @@ class IR2GnarkVisitor():
 
     def visit_circuit(self, node: IRNodes.Circuit) -> CircuitDefinitionCollection:
         # populate the circuit fields with input signals
-        circuit_fields = [ CircuitStructField(f"FVar_{e}", False) for e in node.inputs ]
+        circuit_fields = [CircuitStructField(f"FVar_{e}", False) for e in node.inputs]
         # register all output signals for special handling
         self.__output_signals = set(node.outputs)
+
+        # If outputs_as_members is set, add outputs as struct fields (with a flag for output annotation)
+        if self.outputs_as_members:
+            for out in node.outputs:
+                # Add as a struct field, with a new 'is_output' property (extend CircuitStructField if needed)
+                # Here, we use is_public=False, but will annotate as output in the emitter
+                circuit_fields.append(CircuitStructField(f"FVar_{out}", False, is_output=True))
 
         circuit_struct = CircuitStruct(node.name, circuit_fields)
 

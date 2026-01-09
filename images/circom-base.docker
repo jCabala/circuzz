@@ -20,3 +20,6 @@ ADD https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_17.ptau \
 
 # download circom github project (i.e. circom 2 which is the rust re-implementation)
 RUN git clone https://github.com/iden3/circom.git /circuzz/circom
+
+# Add circomlib
+RUN git clone 

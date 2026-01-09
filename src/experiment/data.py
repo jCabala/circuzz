@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from dataclasses import field
 
+from backends.circom.picus import ConstraintLevel
+
 @dataclass
 class DataEntry():
 
@@ -37,6 +39,12 @@ class DataEntry():
     c2_assumptions     : int
     c2_input_signals   : int
     c2_output_signals  : int
+
+    # 
+    # Picus Specific Entries
+    # 
+    picus_program_generation_reruns : int | None = None # How many times the circuit had to be regenerated to be properly constrained
+    picus_transformed_constraint_level: ConstraintLevel | None = None
 
     #
     # Circom
@@ -177,6 +185,38 @@ class DataEntry():
     noir_c2_bb_verify_time : float | None = None
     noir_c1_ignored_error  : str   | None = None
     noir_c2_ignored_error  : str   | None = None
+
+    #
+    # Mina (separated pipeline stages)
+    #
+
+    # Stage 0: TypeScript compilation (tsc)
+    mina_c1_ts_compile        : bool  | None = None
+    mina_c1_ts_compile_time   : float | None = None
+    mina_c2_ts_compile        : bool  | None = None
+    mina_c2_ts_compile_time   : float | None = None
+    
+    # Stage 1: ZkProgram compilation (circuit.compile())
+    mina_c1_zk_compile        : bool  | None = None
+    mina_c1_zk_compile_time   : float | None = None
+    mina_c2_zk_compile        : bool  | None = None
+    mina_c2_zk_compile_time   : float | None = None
+    
+    # Stage 2: Proving (circuit.compute())
+    mina_c1_prove             : bool  | None = None
+    mina_c1_prove_time        : float | None = None
+    mina_c2_prove             : bool  | None = None
+    mina_c2_prove_time        : float | None = None
+    
+    # Stage 3: Verification
+    mina_c1_verify            : bool  | None = None
+    mina_c1_verify_time       : float | None = None
+    mina_c2_verify            : bool  | None = None
+    mina_c2_verify_time       : float | None = None
+    
+    # Ignored errors
+    mina_c1_ignored_error     : str   | None = None
+    mina_c2_ignored_error     : str   | None = None
 
     #
     # Special Entries for different modes
@@ -343,6 +383,24 @@ class DataEntry():
             , self._custom_to_str(self.noir_c2_bb_verify_time)
             , self._custom_to_str(self.noir_c1_ignored_error)
             , self._custom_to_str(self.noir_c2_ignored_error)
+            , self._custom_to_str(self.mina_c1_ts_compile)
+            , self._custom_to_str(self.mina_c1_ts_compile_time)
+            , self._custom_to_str(self.mina_c2_ts_compile)
+            , self._custom_to_str(self.mina_c2_ts_compile_time)
+            , self._custom_to_str(self.mina_c1_zk_compile)
+            , self._custom_to_str(self.mina_c1_zk_compile_time)
+            , self._custom_to_str(self.mina_c2_zk_compile)
+            , self._custom_to_str(self.mina_c2_zk_compile_time)
+            , self._custom_to_str(self.mina_c1_prove)
+            , self._custom_to_str(self.mina_c1_prove_time)
+            , self._custom_to_str(self.mina_c2_prove)
+            , self._custom_to_str(self.mina_c2_prove_time)
+            , self._custom_to_str(self.mina_c1_verify)
+            , self._custom_to_str(self.mina_c1_verify_time)
+            , self._custom_to_str(self.mina_c2_verify)
+            , self._custom_to_str(self.mina_c2_verify_time)
+            , self._custom_to_str(self.mina_c1_ignored_error)
+            , self._custom_to_str(self.mina_c2_ignored_error)
             , self._custom_to_str(self.cycle)
             , self._custom_to_str(self.explore_time)
             , self._custom_to_str(self.is_fixed)
@@ -495,6 +553,24 @@ class DataEntry():
         , "noir_c2_bb_verify_time"
         , "noir_c1_ignored_error"
         , "noir_c2_ignored_error"
+        , "mina_c1_ts_compile"
+        , "mina_c1_ts_compile_time"
+        , "mina_c2_ts_compile"
+        , "mina_c2_ts_compile_time"
+        , "mina_c1_zk_compile"
+        , "mina_c1_zk_compile_time"
+        , "mina_c2_zk_compile"
+        , "mina_c2_zk_compile_time"
+        , "mina_c1_prove"
+        , "mina_c1_prove_time"
+        , "mina_c2_prove"
+        , "mina_c2_prove_time"
+        , "mina_c1_verify"
+        , "mina_c1_verify_time"
+        , "mina_c2_verify"
+        , "mina_c2_verify_time"
+        , "mina_c1_ignored_error"
+        , "mina_c2_ignored_error"
         , "cycle"
         , "explore_time"
         , "is_fixed"

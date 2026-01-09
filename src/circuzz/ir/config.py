@@ -7,6 +7,7 @@ from .rewrite.rules import RewriteRule
 
 class GeneratorKind(StrEnum):
     ARITHMETIC = "arithmetic" # see ArithmeticCircuitGenerator
+    QUADRATIC  = "quadratic"  # see QuadraticCircuitGenerator
     BOOLEAN    = "boolean"    # see BooleanCircuitGenerator
 
 @dataclass(frozen=True)
@@ -54,6 +55,9 @@ class IRGenConfig():
     # specifies which generator to use. This mostly impacts
     # how input signals are treated.
     generator : GeneratorKind
+
+    # Quadratic generator specific settings
+    quadratic_generator_inequality_assertion_probability : float
 
     # weighted probability for generation nodes
     constant_probability_weight : float
@@ -104,6 +108,7 @@ class IRGenConfig():
         max_exponent_value = int(value["max_exponent_value"])
 
         boundary_value_probability = float(value["boundary_value_probability"])
+        quadratic_generator_inequality_assertion_probability = float(value.get("quadratic_generator_inequality_assertion_probability", 0.5))
 
         # currently this makes no sense so it is no longer required and defaults to 0
         small_upper_bound_probability = float(value.get("small_upper_bound_probability", 0))
@@ -126,6 +131,7 @@ class IRGenConfig():
             , max_exponent_value = max_exponent_value
             , boundary_value_probability = boundary_value_probability
             , small_upper_bound_probability = small_upper_bound_probability
+            , quadratic_generator_inequality_assertion_probability = quadratic_generator_inequality_assertion_probability
             )
 
 @dataclass(frozen=True)

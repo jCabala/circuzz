@@ -13,6 +13,7 @@ from pathlib import Path
 
 # specified inside of docker container
 PATH_TO_BASE_PROJECT = Path("/circuzz/gnark/gnarkfuzz")
+PATH_TO_PICUS_BASE_PROJECT = Path("/circuzz/gnark/picus_base")
 
 class GnarkProofSystem(StrEnum):
     GROTH16 = "groth16"

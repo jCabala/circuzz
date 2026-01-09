@@ -100,6 +100,8 @@ class TestIteration():
 @dataclass
 class NoirResult():
     iterations : list[TestIteration] = field(default_factory=list)
+    original_code : str | None = None
+    transformed_code : str | None = None
 
 # ================================================================
 #                           Helper
@@ -193,7 +195,7 @@ def check_for_ignored_errors(iteration: TestIteration, c1_exec: ExecStatus, c2_e
 #                  IR to Noir and Project Setup
 # ================================================================
 
-def prepare_project(root: Path, prefix: str, circuit: Circuit, curve: CurvePrime) -> Path:
+def prepare_project(root: Path, prefix: str, circuit: Circuit, curve: CurvePrime) -> tuple[Path, str]:
     """
     Generates a default noir project for a given circuit.
     First the circuit is transformed into noir source code.
@@ -206,6 +208,7 @@ def prepare_project(root: Path, prefix: str, circuit: Circuit, curve: CurvePrime
             |__ src/
                  |__ main.noir
     ```
+    Returns: (project_path, noir_source_code)
     """
 
     working_dir = root / prefix
@@ -243,7 +246,7 @@ def prepare_project(root: Path, prefix: str, circuit: Circuit, curve: CurvePrime
     with open(main_nr, 'w') as file_handler:
         file_handler.write(noir_source)
 
-    return working_dir
+    return working_dir, noir_source
 
 
 # ================================================================
@@ -322,6 +325,7 @@ def prove_and_compare \
     where the `target` folder was a product of `noir execute`.
     """
 
+
     witness_orig = original / "target" / (WITNESS_NAME + ".gz")
     witness_tf = transformed / "target" / (WITNESS_NAME + ".gz")
     assert witness_orig.is_file(), "sanity check for available witness file"
@@ -334,6 +338,26 @@ def prove_and_compare \
 
     proof_orig = original / "proof"
     proof_tf = transformed / "proof"
+
+    # Log circuit, witness, and input sizes before proof generation
+    try:
+        circuit_size_orig = noir_json_orig.stat().st_size
+        circuit_size_tf = noir_json_tf.stat().st_size
+        witness_size_orig = witness_orig.stat().st_size
+        witness_size_tf = witness_tf.stat().st_size
+        logger.info(f"[bb_prove] Original circuit JSON size: {circuit_size_orig} bytes")
+        logger.info(f"[bb_prove] Transformed circuit JSON size: {circuit_size_tf} bytes")
+        logger.info(f"[bb_prove] Original witness size: {witness_size_orig} bytes")
+        logger.info(f"[bb_prove] Transformed witness size: {witness_size_tf} bytes")
+        # Optionally, log Prover.toml input size if present
+        prover_toml_orig = original / "Prover.toml"
+        prover_toml_tf = transformed / "Prover.toml"
+        if prover_toml_orig.is_file():
+            logger.info(f"[bb_prove] Original Prover.toml size: {prover_toml_orig.stat().st_size} bytes")
+        if prover_toml_tf.is_file():
+            logger.info(f"[bb_prove] Transformed Prover.toml size: {prover_toml_tf.stat().st_size} bytes")
+    except Exception as e:
+        logger.warning(f"[bb_prove] Failed to log file sizes: {e}")
 
     prove_exec_orig = bb_prove(noir_json_orig, witness_orig, proof_orig)
     prove_exec_tf = bb_prove(noir_json_tf, witness_tf, proof_tf)
@@ -352,11 +376,15 @@ def prove_and_compare \
     # NOTE: currently vk generation is not expected to fail!
     if prove_exec_orig.returncode != 0:
         logger.error("unexpected error occurred during proof generation for the original project")
+        logger.error(f"[bb_prove] stderr: {getattr(prove_exec_orig, 'stderr', '')}")
+        logger.error(f"[bb_prove] stdout: {getattr(prove_exec_orig, 'stdout', '')}")
         logger.debug(prove_exec_orig)
         iteration.error = NoirError.UNKNOWN_PROOF_ERROR
         return # abort
     if prove_exec_tf.returncode != 0:
         logger.error("unexpected error occurred during proof generation for the transformed project")
+        logger.error(f"[bb_prove] stderr: {getattr(prove_exec_tf, 'stderr', '')}")
+        logger.error(f"[bb_prove] stdout: {getattr(prove_exec_tf, 'stdout', '')}")
         logger.debug(prove_exec_tf)
         iteration.error = NoirError.UNKNOWN_PROOF_ERROR
         return # abort
@@ -430,7 +458,7 @@ def run_metamorphic_tests \
 
     # check that only arithmetic generators are used!
     generatorKind = config.ir.generation.generator
-    if generatorKind != GeneratorKind.ARITHMETIC:
+    if generatorKind not in [GeneratorKind.ARITHMETIC, GeneratorKind.QUADRATIC]:
         raise NotImplementedError(f"noir is unable to deal with '{generatorKind}' generator!")
 
     # sanity checks
@@ -449,10 +477,12 @@ def run_metamorphic_tests \
     # prepare noir projects
     clean_or_create_dir(working_dir)
     logger.info(f"cleaning working dir: {working_dir}")
-    project_orig = prepare_project(working_dir, "origin", circuit_orig, curve)
-    project_tf = prepare_project(working_dir, "transformed", circuit_tf, curve)
+    project_orig, noir_code_orig = prepare_project(working_dir, "origin", circuit_orig, curve)
+    project_tf, noir_code_tf = prepare_project(working_dir, "transformed", circuit_tf, curve)
 
     noir_result = NoirResult()
+    noir_result.original_code = noir_code_orig
+    noir_result.transformed_code = noir_code_tf
 
     # main loop running for each input
     for _ in range(config.noir.test_iterations):
