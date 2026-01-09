@@ -1,0 +1,17 @@
+import { Field, Bool, Provable, ZkProgram, Gadgets, Struct } from 'o1js';
+
+const circuit = ZkProgram({
+  name: 'Circuit_pallas',
+  publicOutput: undefined,
+
+  methods: {
+    compute: {
+      privateInputs: [Bool],
+      async method(in0: Bool) {
+        Bool(false).assertTrue();
+        return;
+      },
+    }
+  },
+})
+export { circuit };

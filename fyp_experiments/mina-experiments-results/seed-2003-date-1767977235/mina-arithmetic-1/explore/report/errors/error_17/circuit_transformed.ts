@@ -1,0 +1,20 @@
+import { Field, Bool, Provable, ZkProgram, Gadgets, Struct } from 'o1js';
+
+const circuit = ZkProgram({
+  name: 'Circuit_pallas_eq',
+  publicOutput: Field,
+
+  methods: {
+    compute: {
+      privateInputs: [Field, Field],
+      async method(in0: Field, in1: Field) {
+        const out0 = Field(21776674428660305482763304338775378972113721656804513970319756569864601409756n).add(Field(0));
+        Provable.log(out0);
+        Field(8888108067593701414003672349393536887806661188559604288057417787106532164175n).equals(Provable.if(Bool(true), Field(27563833975833680731814492689046507445903986415054825821637759552513974563789n), Field(14705489087621368039813065583355898929517897863658099921571861953027701937452n)).neg().add(Field(0)).add(Provable.if(Field(1525135910657246530400027978533758175537680768563953154426530324271016166683n).lessThan(Field(2037839925586215609416212213741128076154779265298377709292231019866305688714n)), Provable.if(Bool(false), Field(28948022309329048855892746252171976963363056481941560715954676764349967630336n).neg().neg(), in1).mul(Field(1)), Provable.if(Bool(true), in1.neg().neg(), Field(1).mul(Field(14287039004337485960087891846668434267696314722365811275769954087280592996496n)))))).assertTrue();
+        Bool(false).and(Bool(true)).and(Bool(false).not()).or(Bool(true)).and(Bool(false).not().not()).assertTrue();
+        return { publicOutput: out0 };
+      },
+    }
+  },
+})
+export { circuit };
