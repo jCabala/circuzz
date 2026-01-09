@@ -29,7 +29,7 @@ IMAGE_NOIR_BASE=circuzz/noir-base
 BUILD_BASE=0
 
 BUILD_CIRCOM_BASE=0
-BUILD_CIRCOM=0
+BUILD_CIRCOM=1
 
 BUILD_CORSET_BASE=0
 BUILD_CORSET=0
@@ -38,7 +38,7 @@ BUILD_GNARK_BASE=0
 BUILD_GNARK=0
 
 BUILD_NOIR_BASE=0
-BUILD_NOIR=1
+BUILD_NOIR=0
 
 # -----------------------------------------
 # Setup debug-log folder structure
