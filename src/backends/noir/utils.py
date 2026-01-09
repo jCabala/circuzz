@@ -28,14 +28,31 @@ def field_str_to_int(field: str) -> int:
 def parse_signals_from_noir_output(output: str, project_name: str, output_names: list[str]) -> dict[str, int]:
 
     line_prefix = f"[{project_name}] Circuit output:"
-    pattern = r"Field\(([-⁰¹²³⁴⁵⁶⁷⁸⁹×\d]+)\)"
+    # Match either Field(...) or 0x... hex outputs
+    pattern = r"Field\(([-⁰¹²³⁴⁵⁶⁷⁸⁹×\d]+)\)|0x[0-9a-fA-F]+"
 
     # iterate over the lines to find the specific debug line
     lines = output.split("\n")
     for line in lines:
         if line.startswith(line_prefix):
             match = re.findall(pattern, line)
-            values = [field_str_to_int(v) for v in match]
+            # Convert matches: if Field(...) matched, v is the number; if 0x..., v is the hex string
+            values = []
+            for v in match:
+                if v:  # Field(...) match group
+                    values.append(field_str_to_int(v))
+                else:  # 0x... match (whole match)
+                    # Find the 0x... substring in the line
+                    hexes = re.findall(r"0x[0-9a-fA-F]+", line)
+                    for hx in hexes:
+                        values.append(int(hx, 16))
+                    break  # Only process hexes if present
+            logger.debug(f"[Noir Output Parsing] Project: {project_name}")
+            logger.debug(f"[Noir Output Parsing] Output line: {line}")
+            logger.debug(f"[Noir Output Parsing] Parsed values: {values}")
+            logger.debug(f"[Noir Output Parsing] Expected output names: {output_names}")
+            if len(values) != len(output_names):
+                logger.error(f"[Noir Output Parsing] Output signal count mismatch: got {len(values)}, expected {len(output_names)}")
             assert len(values) == len(output_names), "unexpected miss-match of output signals"
             return dict(zip(output_names, values, strict=True))
 

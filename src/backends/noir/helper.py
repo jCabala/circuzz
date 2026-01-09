@@ -325,6 +325,7 @@ def prove_and_compare \
     where the `target` folder was a product of `noir execute`.
     """
 
+
     witness_orig = original / "target" / (WITNESS_NAME + ".gz")
     witness_tf = transformed / "target" / (WITNESS_NAME + ".gz")
     assert witness_orig.is_file(), "sanity check for available witness file"
@@ -337,6 +338,26 @@ def prove_and_compare \
 
     proof_orig = original / "proof"
     proof_tf = transformed / "proof"
+
+    # Log circuit, witness, and input sizes before proof generation
+    try:
+        circuit_size_orig = noir_json_orig.stat().st_size
+        circuit_size_tf = noir_json_tf.stat().st_size
+        witness_size_orig = witness_orig.stat().st_size
+        witness_size_tf = witness_tf.stat().st_size
+        logger.info(f"[bb_prove] Original circuit JSON size: {circuit_size_orig} bytes")
+        logger.info(f"[bb_prove] Transformed circuit JSON size: {circuit_size_tf} bytes")
+        logger.info(f"[bb_prove] Original witness size: {witness_size_orig} bytes")
+        logger.info(f"[bb_prove] Transformed witness size: {witness_size_tf} bytes")
+        # Optionally, log Prover.toml input size if present
+        prover_toml_orig = original / "Prover.toml"
+        prover_toml_tf = transformed / "Prover.toml"
+        if prover_toml_orig.is_file():
+            logger.info(f"[bb_prove] Original Prover.toml size: {prover_toml_orig.stat().st_size} bytes")
+        if prover_toml_tf.is_file():
+            logger.info(f"[bb_prove] Transformed Prover.toml size: {prover_toml_tf.stat().st_size} bytes")
+    except Exception as e:
+        logger.warning(f"[bb_prove] Failed to log file sizes: {e}")
 
     prove_exec_orig = bb_prove(noir_json_orig, witness_orig, proof_orig)
     prove_exec_tf = bb_prove(noir_json_tf, witness_tf, proof_tf)
@@ -355,11 +376,15 @@ def prove_and_compare \
     # NOTE: currently vk generation is not expected to fail!
     if prove_exec_orig.returncode != 0:
         logger.error("unexpected error occurred during proof generation for the original project")
+        logger.error(f"[bb_prove] stderr: {getattr(prove_exec_orig, 'stderr', '')}")
+        logger.error(f"[bb_prove] stdout: {getattr(prove_exec_orig, 'stdout', '')}")
         logger.debug(prove_exec_orig)
         iteration.error = NoirError.UNKNOWN_PROOF_ERROR
         return # abort
     if prove_exec_tf.returncode != 0:
         logger.error("unexpected error occurred during proof generation for the transformed project")
+        logger.error(f"[bb_prove] stderr: {getattr(prove_exec_tf, 'stderr', '')}")
+        logger.error(f"[bb_prove] stdout: {getattr(prove_exec_tf, 'stdout', '')}")
         logger.debug(prove_exec_tf)
         iteration.error = NoirError.UNKNOWN_PROOF_ERROR
         return # abort
