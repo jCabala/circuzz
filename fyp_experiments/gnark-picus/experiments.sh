@@ -28,9 +28,11 @@ OBJ_DIR=obj/seed-$SEED-date-$start
 WAIT_BETWEEN=2
 
 # Timeout settings
-T_SECONDS=30
-T_MINUTES=30
-T_HOURS=2
+T_SECONDS=0
+T_MINUTES=0
+T_HOURS=72
+
+CPUS=4
 
 # Configs
 GNARK_CONFIG="fyp_experiments/gnark-picus/configs/gnark.json"
@@ -76,7 +78,7 @@ function start() {
     mkdir -p "$EXPLORE_REP_DIR"
     mkdir -p "$LOG_DIR_RUN"
 
-    podman run --timeout=$PODMAN_TIMEOUT --pids-limit=-1 --cpus=1 -v $CIRCUZZ_DIR:/app -v $TMP_DIR:/tmp --rm $2 python3 cli.py explore --tool $1 -v$VERBOSITY --timeout $TOOL_TIMEOUT --working-dir $EXPLORE_WORK_DIR --report-dir $PREFIXED_EXPLORE_REP_DIR --seed $4 --config $CONFIG > $LOG_DIR_RUN/$3-explore.log 2>&1
+    podman run --timeout=$PODMAN_TIMEOUT --pids-limit=-1 --cpus=$CPUS -v $CIRCUZZ_DIR:/app -v $TMP_DIR:/tmp --rm $2 python3 cli.py explore --tool $1 -v$VERBOSITY --timeout $TOOL_TIMEOUT --working-dir $EXPLORE_WORK_DIR --report-dir $PREFIXED_EXPLORE_REP_DIR --seed $4 --config $CONFIG > $LOG_DIR_RUN/$3-explore.log 2>&1
 }
 
 

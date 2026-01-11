@@ -11,7 +11,7 @@
     "bundle_size": 1,
     "boundary_input_probability": 0.1,
     "test_iterations": 2,
-    "go_test_timeout": "24h",
+    "go_test_timeout": "72h",
     "oracle_type": "picus"
   },
 
