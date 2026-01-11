@@ -22,14 +22,14 @@ MINA_BOOLEAN_CONFIG=fyp_experiments/mina/config/mina-boolean.json
 
 IMAGE_MINA_DEFAULT="mina-latest"
 
-SEED=2003
+SEED=42
 VERBOSITY=3
 USE_TMP=1
 
 # Timeout settings
 T_SECONDS=0
 T_MINUTES=0
-T_HOURS=24
+T_HOURS=3
 
 MINA_ARITHMETIC_NUM=1
 MINA_ARITHMETIC_CPUS=2
@@ -119,6 +119,8 @@ function start() {
     wait $(jobs -p)
 }
 
+trap cleanup EXIT INT TERM
+
 # mina arithmetic
 if [[ $MINA_ARITHMETIC_NUM -ne 0 ]]; then
     for i in $(seq 1 $MINA_ARITHMETIC_NUM);
@@ -144,9 +146,12 @@ fi
 # wait for all to finish
 wait $(jobs -p)
 
-# clean up temporary
-rm -rf $TMP_DIR
 
-end=`date +%s`
-runtime=$((end-start))
-echo "finished in $runtime s"
+# Cleanup and timing function to always run on exit
+cleanup() {
+    rm -rf $TMP_DIR
+    end=`date +%s`
+    runtime=$((end-start))
+    echo "Time taken for exploration: $runtime s" >> $OBJ_DIR/explore_time.txt
+    echo "finished in $runtime s"
+}

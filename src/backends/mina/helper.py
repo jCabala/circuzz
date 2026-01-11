@@ -1061,30 +1061,31 @@ def run_metamorphic_tests_batch(
     # Process Results into TestIterations
     # ================================================================
     
-    # Handle compile failures
-    if not c1_batch_result.compile_success:
+    # Handle compile failures in a metamorphic way
+    # We cannot proceed if either circuit failed to compile
+    if not c1_batch_result.compile_success or not c2_batch_result.compile_success:
         iteration = TestIteration()
         iteration.c1_ts_compile = True
         iteration.c1_ts_compile_time = c1_ts_time
         iteration.c2_ts_compile = True
         iteration.c2_ts_compile_time = c2_ts_time
-        iteration.c1_zk_compile = False
+        iteration.c1_zk_compile = c1_batch_result.compile_success
         iteration.c1_zk_compile_time = c1_batch_result.compile_time
-        iteration.error = f"c1 ZK compile failed: {c1_batch_result.compile_error}"
-        result.iterations.append(iteration)
-        return result
-    
-    if not c2_batch_result.compile_success:
-        iteration = TestIteration()
-        iteration.c1_ts_compile = True
-        iteration.c1_ts_compile_time = c1_ts_time
-        iteration.c2_ts_compile = True
-        iteration.c2_ts_compile_time = c2_ts_time
-        iteration.c1_zk_compile = True
-        iteration.c1_zk_compile_time = c1_batch_result.compile_time
-        iteration.c2_zk_compile = False
+        iteration.c2_zk_compile = c2_batch_result.compile_success
         iteration.c2_zk_compile_time = c2_batch_result.compile_time
-        iteration.error = f"c2 ZK compile failed: {c2_batch_result.compile_error}"
+        # If both failed, treat as ignorable (no error, just record ignored errors)
+        if not c1_batch_result.compile_success and not c2_batch_result.compile_success:
+            iteration.c1_ignored_error = f"c1 ZK compile failed: {c1_batch_result.compile_error}"
+            iteration.c2_ignored_error = f"c2 ZK compile failed: {c2_batch_result.compile_error}"
+            logger.debug("Both c1 and c2 ZK compile failed (ignored)")
+        else:
+            # Only one failed: this is a metamorphic violation
+            if not c1_batch_result.compile_success:
+                iteration.error = f"c1 ZK compile failed: {c1_batch_result.compile_error}"
+                logger.warning("Metamorphic violation: c1 ZK compile failed but c2 succeeded")
+            else:
+                iteration.error = f"c2 ZK compile failed: {c2_batch_result.compile_error}"
+                logger.warning("Metamorphic violation: c2 ZK compile failed but c1 succeeded")
         result.iterations.append(iteration)
         return result
     

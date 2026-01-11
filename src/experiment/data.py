@@ -577,16 +577,26 @@ class DataEntry():
         ])
 
     def _custom_to_str(self, value: bool | int | float | str | None) -> str:
-        if value == None:
-            return ""
-        else:
-            return str(value)
+        if value is None:
+            return ''
+        if isinstance(value, str):
+            s_escaped = value.replace('"', '""')
+            return f'"{s_escaped}"'
+        return str(value)
 
     def _custom_list_to_str(self, values: list[int] | list[str] | None) -> str:
-        if values == None or len(values) == 0:
-            return ""
-        else:
-            return "|".join([self._custom_to_str(e) for e in values])
+        if values is None or len(values) == 0:
+            return ''
+        # Only quote string elements, not numbers
+        def elem_to_str(e):
+            if isinstance(e, str):
+                return e.replace('"', '""')
+            return str(e)
+        joined = "|".join([elem_to_str(e) for e in values])
+        # If any element is a string, wrap the whole list in quotes
+        if any(isinstance(e, str) for e in values):
+            return f'"{joined}"'
+        return joined
 
     @classmethod
     def parse_str_or_none(cls, value: str) -> str | None:
