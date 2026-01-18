@@ -33,8 +33,10 @@ T_HOURS=72
 
 MINA_ARITHMETIC_NUM=1
 MINA_ARITHMETIC_CPUS=4
-MINA_BOOLEAN_NUM=1
-MINA_BOOLEAN_CPUS=4
+MINA_BOOLEAN_NUM=0
+MINA_BOOLEAN_CPUS=0
+
+MEM_LIMIT=4g
 
 TMP_DIR=/tmp/circuzz/seed-$SEED-date-$start
 OBJ_DIR=$SCRIPT_PATH/obj/seed-$SEED-date-$start
@@ -111,9 +113,9 @@ function start() {
 
     # start explorer
     if [[ $USE_TMP -eq 1 ]]; then
-        podman run --timeout=$PODMAN_TIMEOUT --pids-limit=-1 --cpus=$4 -v $CIRCUZZ_ROOT/:/app -v $TMP_DIR:/tmp --rm $2 python3 cli.py explore --tool $1 -v$VERBOSITY --timeout $TOOL_TIMEOUT --working-dir $EXPLORE_WORK_DIR --report-dir $PREFIXED_EXPLORE_REP_DIR --seed $5 --config $CONFIG > $LOG_DIR_RUN/$3-explore.log 2>&1 &
+        podman run --timeout=$PODMAN_TIMEOUT --pids-limit=-1 --cpus=$4 -m $MEM_LIMIT -v $CIRCUZZ_ROOT/:/app -v $TMP_DIR:/tmp --rm $2 python3 cli.py explore --tool $1 -v$VERBOSITY --timeout $TOOL_TIMEOUT --working-dir $EXPLORE_WORK_DIR --report-dir $PREFIXED_EXPLORE_REP_DIR --seed $5 --config $CONFIG > $LOG_DIR_RUN/$3-explore.log 2>&1 &
     else
-        podman run --timeout=$PODMAN_TIMEOUT --pids-limit=-1 --cpus=$4 -v $CIRCUZZ_ROOT/:/app --rm $2 python3 cli.py explore --tool $1 -v$VERBOSITY --timeout $TOOL_TIMEOUT --working-dir $EXPLORE_WORK_DIR --report-dir $PREFIXED_EXPLORE_REP_DIR --seed $5 --config $CONFIG > $LOG_DIR_RUN/$3-explore.log 2>&1 &
+        podman run --timeout=$PODMAN_TIMEOUT --pids-limit=-1 --cpus=$4 -m $MEM_LIMIT -v $CIRCUZZ_ROOT/:/app --rm $2 python3 cli.py explore --tool $1 -v$VERBOSITY --timeout $TOOL_TIMEOUT --working-dir $EXPLORE_WORK_DIR --report-dir $PREFIXED_EXPLORE_REP_DIR --seed $5 --config $CONFIG > $LOG_DIR_RUN/$3-explore.log 2>&1 &
     fi
 
     wait $(jobs -p)

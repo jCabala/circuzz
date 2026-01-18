@@ -1,6 +1,6 @@
-
 ## Custom ##
 obj/
+*.out
 
 ### Python ###
 # Byte-compiled / optimized / DLL files

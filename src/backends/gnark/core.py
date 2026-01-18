@@ -73,7 +73,7 @@ def run_gnark_metamorphic_tests_with_picus_oracle \
 
         # Timeout settings for PICUS
         PICUS_TIMEOUT_INITIAL = 60   # seconds for initial circuit
-        PICUS_TIMEOUT_TRANSFORMED = 180  # seconds for transformed circuit
+        PICUS_TIMEOUT_TRANSFORMED = 360  # seconds for transformed circuit
 
         ir_generation_start = time.time()
         ir, gnark_code, num_tries = generate_picus_constrained_gnark_code(
