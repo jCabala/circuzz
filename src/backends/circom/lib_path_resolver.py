@@ -15,6 +15,12 @@ class LibPathResolver:
     def __init__(self, mode: LibPathMode):
         self.mode = mode
 
+    def get_path_prefix(self) -> str:
+        if self.mode == LibPathMode.LOCAL:
+            return LOCAL_NODE_MODULES_CIRCOMLIB_CIRCUITS_PATH
+
+        return DOCKER_GLOBAL_CIRCOMLIB_CIRCUITS_PATH
+
     def get_comparators_path(self) -> str:
             if self.mode == LibPathMode.LOCAL:
                 return LOCAL_NODE_MODULES_CIRCOMLIB_CIRCUITS_PATH + COMPARATORS_FILE_PATH

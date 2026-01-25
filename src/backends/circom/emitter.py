@@ -27,7 +27,7 @@ class EmitVisitor():
         self.visit(node)
         return self.buffer.getvalue()
 
-    def visit(self, node: ASTNode):
+    def visit(self, node: ASTNode, no_parentheses: bool = False):
         match node:
             case Identifier():
                 self.visit_identifier(node)
@@ -60,7 +60,7 @@ class EmitVisitor():
             case ConditionalExpression():
                 self.visit_conditional_expression(node)
             case BinaryExpression():
-                self.visit_binary_expression(node)
+                self.visit_binary_expression(node,  no_parentheses=no_parentheses)
             case UnaryExpression():
                 self.visit_unary_expression(node)
             case CallExpression():
@@ -88,10 +88,10 @@ class EmitVisitor():
         self.buffer.write("\n")
 
         # Add the necessary libraries
-        path_resolver = LibPathResolver(mode=self.emit_config.lib_path_mode)
-        if self.emit_config.constrain_sharp_inequality_assertions:
-            comparators_path = path_resolver.get_comparators_path()
-            self.buffer.write(f'include "{comparators_path}";\n\n')
+        # path_resolver = LibPathResolver(mode=self.emit_config.lib_path_mode)
+        # if self.emit_config.constrain_sharp_inequality_assertions:
+        #     comparators_path = path_resolver.get_comparators_path()
+        #     self.buffer.write(f'include "{comparators_path}";\n\n')
 
         for stmt in node.statements:
             self.visit(stmt)
@@ -131,8 +131,9 @@ class EmitVisitor():
         self.visit_basic_block(node.block)
 
     def visit_include_statement(self, node: IncludeStatement):
-        self.buffer.write(self.current_indent + "include ")
-        self.visit_string_literal(node.dependency)
+        path_resolver = LibPathResolver(mode=self.emit_config.lib_path_mode)
+        self.buffer.write(self.current_indent + "include \"" + path_resolver.get_path_prefix() + node.dependency.value + "\"")
+        #self.visit_string_literal(node.dependency)
         self.buffer.write(self.current_indent + ";\n")
 
     def visit_variable_definition(self, node: VariableDefinition):
@@ -223,6 +224,11 @@ class EmitVisitor():
                 return False
             
     def visit_assert_statement(self, node: AssertStatement):
+        if node.unwrapped:
+            self.visit(node.condition, no_parentheses=True)
+            self.buffer.write(";\n")
+            return
+
         if self.emit_config.constrain_equality_assertions and self._is_equality_assertion(node):
             self.buffer.write(self.current_indent)
             self.visit_equality_assertion_as_constraint(node)
@@ -280,12 +286,14 @@ class EmitVisitor():
         self.visit(node.falseVal)
         self.buffer.write(")")
 
-    def visit_binary_expression(self, node: BinaryExpression):
-        self.buffer.write("(")
+    def visit_binary_expression(self, node: BinaryExpression, no_parentheses: bool = False):
+        if not no_parentheses:
+            self.buffer.write("(")
         self.visit(node.lhs)
         self.buffer.write(" " + node.operator.value + " ")
         self.visit(node.rhs)
-        self.buffer.write(")")
+        if not no_parentheses:
+            self.buffer.write(")")
 
     def visit_unary_expression(self, node: UnaryExpression):
         self.buffer.write("(")

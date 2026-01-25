@@ -40,6 +40,9 @@ class CircomConfig():
     # probability to constraint an assignment "<==" instead of "<--"
     constraint_assignment_probability: float
 
+    # probability to unwrap and constrain assertions
+    unwrap_assertion_probability: float
+
     # Oracle type
     oracle_type : OracleType
 
@@ -54,6 +57,7 @@ class CircomConfig():
         oracle_type = OracleType.from_str(value.get("oracle_type", "circuzz"))
         constrain_equality_assertions = bool(value.get("constrain_equality_assertions", False))
         constrain_sharp_inequality_assertions = bool(value.get("constrain_sharp_inequality_assertions", False))
+        unwrap_assertion_probability = float(value.get("unwrap_assertion_probability", 0))
 
         return CircomConfig \
             ( boundary_input_probability = boundary_input_probability
@@ -61,6 +65,7 @@ class CircomConfig():
             , likelihood_cpp_witness_generation = likelihood_cpp_witness_generation
             , likelihood_snark_witness_check = likelihood_snark_witness_check
             , constraint_assignment_probability = constraint_assignment_probability
+            , unwrap_assertion_probability = unwrap_assertion_probability
             , oracle_type = oracle_type
             , constrain_equality_assertions = constrain_equality_assertions
             , constrain_sharp_inequality_assertions = constrain_sharp_inequality_assertions

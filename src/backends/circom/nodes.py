@@ -312,6 +312,8 @@ class AssertStatement(Statement):
     """
     condition : Expression
     message : str | None = None
+    unwrapped : bool = False ## If true then instead of asserting we will generate constraints. Currently only === supported.
+
 
     def copy(self) -> 'AssertStatement':
         return AssertStatement(self.condition.copy())
