@@ -17,18 +17,18 @@ CIRCUZZ_ROOT=$(realpath "$SCRIPT_PATH/../../")
 # =================================================
 
 # Configa paths must be relative to CIRCUZZ_ROOT
-CIRCOM_CONFIG=fyp_experiments/quadratic-circuzz/config/circom.json
+CIRCOM_CONFIG=fyp_experiments/fully-constraint-circom/config/circom.json
 
 IMAGE_CIRCOM_DEFAULT="localhost/circom-latest:latest"
 
-SEED=2003
+SEED=42
 VERBOSITY=3
 USE_TMP=1
 
 # Timeout settings
 T_SECONDS=0
-T_MINUTES=10
-T_HOURS=0
+T_MINUTES=0
+T_HOURS=24
 
 CIRCOM_NUM=1
 CIRCOM_CPUS=2
@@ -82,7 +82,7 @@ function start() {
 
     EXPLORE_REP_DIR=$OBJ_DIR/$3/explore/report
     LOG_DIR_RUN=$OBJ_DIR/$3/explore/logs
-    PREFIXED_EXPLORE_REP_DIR=/app/fyp_experiments/quadratic-circuzz/obj/seed-$SEED-date-$start/$3/explore/report
+    PREFIXED_EXPLORE_REP_DIR=/app/fyp_experiments/fully-constraint-circom/obj/seed-$SEED-date-$start/$3/explore/report
     if [[ $USE_TMP -eq 1 ]]; then
         # tmp folders are cleaned above
         EXPLORE_WORK_DIR=/tmp/$3/explore/working

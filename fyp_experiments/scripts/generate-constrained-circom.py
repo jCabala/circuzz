@@ -83,7 +83,7 @@ def generate_program(seed: int, config: IRConfig, constraint_probability: float 
     
     # Transform to Circom
     rng = Random(seed)
-    circom_ast = IR2CircomVisitorConstrainAssertions(constraint_probability, rng).transform(circuit)
+    circom_ast = IR2CircomVisitorConstrainAssertions(constraint_probability, rng, unwrap_assertion_probability=0.8).transform(circuit)
 
     # Emit Circom code
     emit_config = EmitConfig(constrain_equality_assertions=True, constrain_sharp_inequality_assertions=True, lib_path_mode=LibPathMode.LOCAL)
@@ -96,7 +96,7 @@ def generate_program(seed: int, config: IRConfig, constraint_probability: float 
 def main():
     """Main function to generate multiple programs and save them."""
     # Configuration
-    num_programs = 10  # Number of programs to generate
+    num_programs = 1000  # Number of programs to generate
     base_seed = 42  # Starting seed
     output_dir = Path(__file__).parent / "programs"
     
