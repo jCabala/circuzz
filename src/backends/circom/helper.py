@@ -155,7 +155,8 @@ SNARK_JS_GROTH16_ZKEY_SCALAR_SIZE_ERROR_RETURNCODE = 1
 SNARK_JS_GROTH16_VERIFY_SCALAR_SIZE_ERROR_STDOUT = "Error: Scalar size does not match"
 SNARK_JS_GROTH16_VERIFY_SCALAR_SIZE_ERROR_RETURNCODE = 1
 
-SNARK_JS_PLONK_ZKEY_TOO_BIG_FOR_TAU_ERROR_STDOUT = "circuit too big for this power of tau ceremony. 0 >"
+SNARK_JS_PLONK_ZKEY_TOO_BIG_FOR_TAU_ERROR_STDOUT = "circuit too big for this power of tau ceremony."
+SNARK_JS_PLONK_ZKEY_TOO_BIG_FOR_TAU_ERROR_STDOUT_2 = "Powers of Tau is not big enough for this circuit size."
 SNARK_JS_PLONK_ZKEY_TOO_BIG_FOR_TAU_ERROR_RETURNCODE = 255
 
 COMPILE_HINT_FOR_NOT_USING_GROTH16 = "(none belong to witness)"
@@ -485,7 +486,8 @@ class CircomManager():
 
     def is_plonk_zkey_too_big_for_tau_error(self, system: ProofSystem, status: ExecStatus) -> bool:
         return system == ProofSystem.PLONK and \
-            SNARK_JS_PLONK_ZKEY_TOO_BIG_FOR_TAU_ERROR_STDOUT in status.stdout and \
+            (SNARK_JS_PLONK_ZKEY_TOO_BIG_FOR_TAU_ERROR_STDOUT in status.stdout or \
+                SNARK_JS_PLONK_ZKEY_TOO_BIG_FOR_TAU_ERROR_STDOUT_2 in status.stdout) and \
             SNARK_JS_PLONK_ZKEY_TOO_BIG_FOR_TAU_ERROR_RETURNCODE == status.returncode
 
     def is_compile_assertion_error(self, status: ExecStatus) -> bool:
