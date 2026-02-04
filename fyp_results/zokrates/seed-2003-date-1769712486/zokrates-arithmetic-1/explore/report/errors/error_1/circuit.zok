@@ -1,0 +1,4 @@
+def main(private field in0) -> field {
+    field cond0 = if (((-1f) * in0 * (-1f)) > in0) { 1f } else { 0f };
+    return cond0;
+}

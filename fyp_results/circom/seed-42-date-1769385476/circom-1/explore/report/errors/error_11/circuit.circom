@@ -1,0 +1,82 @@
+pragma circom 2.0.6;
+
+include "/circuzz/circomlib/circuits/comparators.circom";
+
+include "/circuzz/circomlib/circuits/mux1.circom";
+
+include "/circuzz/circomlib/circuits/gates.circom";
+
+template main_template() {
+    signal output out0;
+    assert(((229689663414455172 / 1) != 0));
+    component comp_0 = NOT();
+    comp_0.in <== 1;
+    component comp_1 = NOT();
+    comp_1.in <== 1;
+    component comp_2 = AND();
+    comp_2.a <== comp_0.out;
+    comp_2.b <== comp_1.out;
+    signal sig_3;
+    sig_3 <== 13705565844730957219;
+    signal sig_4;
+    sig_4 <== (- 1);
+    component comp_5 = LessEqThan(252);
+    comp_5.in[0] <== sig_3;
+    comp_5.in[1] <== sig_4;
+    signal sig_6;
+    sig_6 <== 11397571330424374417;
+    signal sig_7;
+    sig_7 <== 0;
+    component comp_8 = LessThan(252);
+    comp_8.in[0] <== sig_6;
+    comp_8.in[1] <== sig_7;
+    component comp_9 = NOT();
+    comp_9.in <== comp_8.out;
+    component comp_10 = Mux1();
+    comp_10.c[0] <== comp_9.out;
+    comp_10.c[1] <== comp_5.out;
+    comp_10.s <== comp_2.out;
+    signal sig_11;
+    sig_11 <== 2412661776526444922;
+    signal sig_12;
+    sig_12 <== 4962951859171512079;
+    component comp_13 = GreaterThan(252);
+    comp_13.in[0] <== sig_11;
+    comp_13.in[1] <== sig_12;
+    component comp_14 = Mux1();
+    comp_14.c[0] <== 0;
+    comp_14.c[1] <== 0;
+    comp_14.s <== 1;
+    signal sig_15;
+    sig_15 <== 18232007087912405432;
+    signal sig_16;
+    sig_16 <== 13571593676252429836;
+    component comp_17 = GreaterEqThan(252);
+    comp_17.in[0] <== sig_15;
+    comp_17.in[1] <== sig_16;
+    component comp_18 = Mux1();
+    comp_18.c[0] <== comp_17.out;
+    comp_18.c[1] <== comp_14.out;
+    comp_18.s <== comp_13.out;
+    component comp_19 = Mux1();
+    comp_19.c[0] <== 0;
+    comp_19.c[1] <== 6628155327940662486;
+    comp_19.s <== 0;
+    signal sig_20;
+    sig_20 <-- (229689663414455172 / 1);
+    (sig_20 * 1) === 229689663414455172;
+    signal sig_21;
+    sig_21 <-- (comp_19.out % sig_20);
+    component comp_22 = Mux1();
+    comp_22.c[0] <== ((- 4788009108274200227) - 18446744069414584320);
+    comp_22.c[1] <== sig_21;
+    comp_22.s <== comp_18.out;
+    component comp_23 = Mux1();
+    comp_23.c[0] <== comp_22.out;
+    comp_23.c[1] <== 14232881950053995437;
+    comp_23.s <== comp_10.out;
+    out0 <== comp_23.out;
+    log("<@> out0 = ", out0);
+}
+
+component main = main_template();
