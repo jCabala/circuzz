@@ -7,6 +7,7 @@ from backends.noir.core import run_noir_metamorphic_tests
 from backends.corset.core import run_corset_metamorphic_tests
 from backends.gnark.core import run_gnark_metamorphic_tests
 from backends.mina.core import run_mina_metamorphic_tests
+from backends.zokrates.core import run_zokrates_metamorphic_tests
 
 from circuzz.common.filesystem import clean_or_create_dir
 from circuzz.common.filesystem import remove_dir_if_exists
@@ -44,11 +45,12 @@ def worker \
                 test_result = run_gnark_metamorphic_tests(seed, working_dir, report_dir, config, online_tuning)
             case ZKPLanguage.MINA:
                 test_result = run_mina_metamorphic_tests(seed, working_dir, report_dir, config, online_tuning)
+            case ZKPLanguage.ZOKRATES:
+                test_result = run_zokrates_metamorphic_tests(seed, working_dir, report_dir, config, online_tuning)
             case _:
                 raise NotImplementedError(f"unexpected ZKP language {config.zkp_language}")
     except Exception as e: # catch any exception that is not caught so far
         logger.critical(f"internal error with seed '{seed}'")
-        logger.critical(str(e))
         exception = e
     return test_result, exception
 
@@ -123,6 +125,7 @@ def explore(seed: float, report_dir: Path, working_dir: Path, timeout: int | Non
             if exception != None:
                 is_stop = True # stop on an error
                 logger.warning("stopping exploration due to exception ...")
+                raise exception
             else:
                 assert result, "unexpected empty exception and test result"
 

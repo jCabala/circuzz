@@ -44,7 +44,7 @@ def get_common_settings_parser() -> argparse.ArgumentParser:
 
 def get_tool_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument('--tool', choices=["circom", "corset", "gnark", "noir", "mina"], required=True)
+    parser.add_argument('--tool', choices=["circom", "corset", "gnark", "noir", "mina", "zokrates"], required=True)
     return parser
 
 def get_directory_parser() -> argparse.ArgumentParser:

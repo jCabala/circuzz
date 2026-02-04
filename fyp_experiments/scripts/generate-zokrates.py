@@ -129,7 +129,7 @@ def generate_program(seed: int, config: IRConfig, bool_as_field: bool = True):
 
     # If you have a flag in the visitor, wire it here; otherwise keep as-is.
     # zok_ast = IR2ZokratesVisitor(bool_as_field=bool_as_field).transform(circuit)
-    zok_ast = IR2ZokratesVisitor().transform(circuit)
+    zok_ast = IR2ZokratesVisitor(prime=CurvePrime.BN254).transform(circuit)
 
     zok_code = EmitVisitor().emit(zok_ast)
     return circuit, zok_code
@@ -214,7 +214,7 @@ def zokrates_compile_and_witness(
     # Witness
     args = [str(v) for v in witness_args]
     w = _run(
-        ["zokrates", "compute-witness", "-i", str(out_file), "-o", str(witness_file), "-a", *args, "--curve", curve],
+        ["zokrates", "compute-witness", "-i", str(out_file), "-o", str(witness_file), "-a", *args],
         cwd=output_dir,
         timeout=60,
     )

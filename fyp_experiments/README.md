@@ -58,3 +58,8 @@ Generates couple circom programs using the quadratic generator.
 7. Added a picus oracle to gnark and implemented `gnark-picus` experiments
 
 8. Added `Mina` backend
+
+9. Created a backend for circom that unwraps asssertions and constrains everything (apart from arithmetic `and` and `or`)
+
+10. Added zokrates backend
+
