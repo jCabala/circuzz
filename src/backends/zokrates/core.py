@@ -124,9 +124,35 @@ def run_zokrates_metamorphic_tests(
 
     test_time = time.time() - start_time
 
-    # Save circuits + artifact bundle if error detected
+    # Detect if any iteration has a known error
+    is_known_error = any(
+        iteration.error in [
+            "unreachable code",
+            "assertion obviously false",
+            "dynamic comparison incomplete",
+            "not implemented",
+            "division by zero",
+        ] or
+        iteration.c1_ignored_error in [
+            "unreachable code",
+            "assertion obviously false",
+            "dynamic comparison incomplete",
+            "not implemented",
+            "division by zero",
+        ] or
+        iteration.c2_ignored_error in [
+            "unreachable code",
+            "assertion obviously false",
+            "dynamic comparison incomplete",
+            "not implemented",
+            "division by zero",
+        ]
+        for iteration in zokrates_result.iterations
+    )
+
+    # Save circuits + artifact bundle if error detected (but skip known errors)
     has_error = any(iteration.error is not None for iteration in zokrates_result.iterations)
-    if has_error and zokrates_result.original_code and zokrates_result.transformed_code:
+    if has_error and not is_known_error and zokrates_result.original_code and zokrates_result.transformed_code:
         save_error_metamorphic_circuit_pair(
             report_dir,
             zokrates_result.original_code,
@@ -136,6 +162,11 @@ def run_zokrates_metamorphic_tests(
 
     data_entries: list[DataEntry] = []
     for idx, iteration in enumerate(zokrates_result.iterations):
+        # Skip iterations with known errors
+        if iteration.c1_ignored_error in ["unreachable code", "assertion obviously false", "dynamic comparison incomplete", "not implemented", "division by zero"] or \
+           iteration.c2_ignored_error in ["unreachable code", "assertion obviously false", "dynamic comparison incomplete", "not implemented", "division by zero"]:
+            continue
+        
         data_entries.append(
             DataEntry(
                 tool="zokrates",

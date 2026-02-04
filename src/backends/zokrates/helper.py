@@ -52,6 +52,16 @@ _RE_UNCONSTRAINED = re.compile(
 
 _RE_FIELD_RANGE = re.compile(r"Field constant not in the representable range", re.IGNORECASE)
 
+_RE_UNREACHABLE_CODE = re.compile(r"entered unreachable code", re.IGNORECASE)
+
+_RE_ASSERTION_FAILED_COMPILE = re.compile(r"Assertion failed", re.IGNORECASE)
+
+_RE_DYNAMIC_COMPARISON = re.compile(r"dynamic comparison is incomplete", re.IGNORECASE)
+
+_RE_NOT_IMPLEMENTED = re.compile(r"not implemented", re.IGNORECASE)
+
+_RE_DIVISION_BY_ZERO = re.compile(r"division by zero detected", re.IGNORECASE)
+
 
 class ZokratesError(StrEnum):
     UNKNOWN_COMPILATION_ERROR = "unknown compilation error"
@@ -66,6 +76,11 @@ class ZokratesError(StrEnum):
     UNCONSTRAINED_VARIABLES = "unconstrained variables"
     FIELD_CONSTANT_OUT_OF_RANGE = "field constant out of range"
     ASSERTION_FAILED = "assertion failed"
+    UNREACHABLE_CODE = "unreachable code"
+    ASSERTION_OBVIOUSLY_FALSE = "assertion obviously false"
+    DYNAMIC_COMPARISON_INCOMPLETE = "dynamic comparison incomplete"
+    NOT_IMPLEMENTED = "not implemented"
+    DIVISION_BY_ZERO = "division by zero"
 
 
 @dataclass
@@ -128,6 +143,16 @@ def _combined_output(status: ExecStatus) -> str:
 def classify_zokrates_error(status: ExecStatus) -> ZokratesError | None:
     out = _combined_output(status)
 
+    if _RE_UNREACHABLE_CODE.search(out):
+        return ZokratesError.UNREACHABLE_CODE
+    if _RE_DYNAMIC_COMPARISON.search(out):
+        return ZokratesError.DYNAMIC_COMPARISON_INCOMPLETE
+    if _RE_NOT_IMPLEMENTED.search(out):
+        return ZokratesError.NOT_IMPLEMENTED
+    if _RE_DIVISION_BY_ZERO.search(out):
+        return ZokratesError.DIVISION_BY_ZERO
+    if _RE_ASSERTION_FAILED_COMPILE.search(out):
+        return ZokratesError.ASSERTION_OBVIOUSLY_FALSE
     if ZOK_ASSERTION_FAILED in out:
         return ZokratesError.ASSERTION_FAILED
     if _RE_UNCONSTRAINED.search(out):

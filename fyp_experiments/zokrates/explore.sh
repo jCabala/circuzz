@@ -22,7 +22,7 @@ ZOKRATES_BOOLEAN_CONFIG=fyp_experiments/zokrates/config/zokrates-boolean.json
 
 IMAGE_ZOKRATES_DEFAULT="circuzz-zokrates"
 
-SEED=2003
+SEED=1777
 VERBOSITY=3
 
 # Timeout settings
