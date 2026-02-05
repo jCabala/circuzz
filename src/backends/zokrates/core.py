@@ -132,6 +132,7 @@ def run_zokrates_metamorphic_tests(
             "dynamic comparison incomplete",
             "not implemented",
             "division by zero",
+            "unconstrained variables",
         ] or
         iteration.c1_ignored_error in [
             "unreachable code",
@@ -139,6 +140,7 @@ def run_zokrates_metamorphic_tests(
             "dynamic comparison incomplete",
             "not implemented",
             "division by zero",
+            "unconstrained variables",
         ] or
         iteration.c2_ignored_error in [
             "unreachable code",
@@ -146,6 +148,7 @@ def run_zokrates_metamorphic_tests(
             "dynamic comparison incomplete",
             "not implemented",
             "division by zero",
+            "unconstrained variables",
         ]
         for iteration in zokrates_result.iterations
     )
@@ -163,8 +166,8 @@ def run_zokrates_metamorphic_tests(
     data_entries: list[DataEntry] = []
     for idx, iteration in enumerate(zokrates_result.iterations):
         # Skip iterations with known errors
-        if iteration.c1_ignored_error in ["unreachable code", "assertion obviously false", "dynamic comparison incomplete", "not implemented", "division by zero"] or \
-           iteration.c2_ignored_error in ["unreachable code", "assertion obviously false", "dynamic comparison incomplete", "not implemented", "division by zero"]:
+        if iteration.c1_ignored_error in ["unreachable code", "assertion obviously false", "dynamic comparison incomplete", "not implemented", "division by zero", "unconstrained variables"] or \
+           iteration.c2_ignored_error in ["unreachable code", "assertion obviously false", "dynamic comparison incomplete", "not implemented", "division by zero", "unconstrained variables"]:
             continue
         
         data_entries.append(
