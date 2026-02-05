@@ -1,0 +1,5 @@
+def main(private field in0, private field in1) {
+    assert((if (in1 == (0f + (in1 + (0f + (-(-(-((-(if (if ((in0 + 0f) <= in1) { 1f } else { 0f } == 1f) { (-((-(-(-in0))) + 0f)) } else { in0 } * 1f)) + 0f)))))))) { 1f } else { 0f } == 1f));
+    assert(((((0f * ((((1f + 0f) - (1f * 0f)) + if (1f == 0f) { 1f } else { 0f }) - (((1f + 0f) - (1f * 0f)) * if (1f == 0f) { 1f } else { 0f }))) + if (0f == 0f) { 1f } else { 0f }) - ((0f * ((((1f + 0f) - (1f * 0f)) + if (1f == 0f) { 1f } else { 0f }) - (((1f + 0f) - (1f * 0f)) * if (1f == 0f) { 1f } else { 0f }))) * if (0f == 0f) { 1f } else { 0f })) == 1f));
+    return;
+}
