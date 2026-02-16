@@ -20,7 +20,7 @@
 
   "ir": {
     "operators": {
-      "relations": ["<", ">", "<=", ">=", "==", "!="],
+      "relations": ["==", "!="],
       "boolean_unary_operators": ["!"],
       "boolean_binary_operators": ["&&", "||", "^^"],
       "arithmetic_unary_operators": ["-", "~"],
@@ -394,6 +394,63 @@
             "name": "relation-not-equ-to-neq",
             "match": "(!(?a == ?b))",
             "rewrite": "(?a != ?b)"
+          },
+
+
+          {
+            "name": "commutativity-neq",
+            "match": "(?a != ?b)",
+            "rewrite": "(?b != ?a)"
+          },
+          {
+            "name": "equ-to-sub-zero",
+            "match": "(?a == ?b)",
+            "rewrite": "((?a - ?b) == 0)"
+          },
+          {
+            "name": "sub-zero-to-equ",
+            "match": "((?a - ?b) == 0)",
+            "rewrite": "(?a == ?b)"
+          },
+          {
+            "name": "neq-to-sub-not-zero",
+            "match": "(?a != ?b)",
+            "rewrite": "((?a - ?b) != 0)"
+          },
+          {
+            "name": "sub-not-zero-to-neq",
+            "match": "((?a - ?b) != 0)",
+            "rewrite": "(?a != ?b)"
+          },
+          {
+            "name": "neg-both-sides-equ",
+            "match": "((-?a) == (-?b))",
+            "rewrite": "(?a == ?b)"
+          },
+          {
+            "name": "equ-to-neg-both-sides",
+            "match": "(?a == ?b)",
+            "rewrite": "((-?a) == (-?b))"
+          },
+          {
+            "name": "neg-both-sides-neq",
+            "match": "((-?a) != (-?b))",
+            "rewrite": "(?a != ?b)"
+          },
+          {
+            "name": "neq-to-neg-both-sides",
+            "match": "(?a != ?b)",
+            "rewrite": "((-?a) != (-?b))"
+          },
+          {
+            "name": "add-cancel-equ",
+            "match": "((?a + ?c) == (?b + ?c))",
+            "rewrite": "(?a == ?b)"
+          },
+          {
+            "name": "equ-to-add-cancel",
+            "match": "(?a == ?b)",
+            "rewrite": "((?a + ?c) == (?b + ?c))"
           }
         ],
         "weakening": [

@@ -9,6 +9,7 @@ from enum import StrEnum
 from pathlib import Path
 from random import Random
 from typing import TYPE_CHECKING
+from concurrent.futures import ThreadPoolExecutor
 import re
 import json
 
@@ -46,6 +47,8 @@ class MinaError(StrEnum):
     """Possible error types detected by Mina tests."""
     DIVERGING_SIGNALS = "diverging signals"
     METAMORPHIC_VIOLATION_EXECUTION = "metamorphic violation execution"
+    METAMORPHIC_VIOLATION_VERIFICATION = "metamorphic violation verification"
+    PROOF_VERIFICATION_FAILED = "proof verification failed"
 
 
 # ================================================================
@@ -329,11 +332,12 @@ def create_batch_runner(
     input_types: list[str],
 ) -> Path:
     """
-    Create a batch runner that compiles ONCE and proves with MULTIPLE input sets.
+    Create a batch runner that compiles ONCE, proves and verifies with MULTIPLE input sets.
     This is a major optimization: compile once (~60-130s) then prove many times (~2-5s each).
+    Crucially, we now verify EVERY proof immediately after generation.
     
     The runner reads inputs from batch-inputs.json and writes results to batch-results.json.
-    Each iteration's results include: success, prove_time_ms, public_output, error.
+    Each iteration's results include: success, prove_time_ms, verify_time_ms, public_output, error, verify_error.
     """
     # Build the input parsing logic based on types
     input_parsing = []
@@ -345,9 +349,9 @@ def create_batch_runner(
     
     input_conversion = ", ".join(input_parsing)
     
-    runner_code = f'''// Batch Runner: Compile ONCE, prove MULTIPLE times
+    runner_code = f'''// Batch Runner: Compile ONCE, prove MULTIPLE times, verify all
 // This avoids recompiling the ZkProgram for each iteration (major speedup!)
-import {{ Field, Bool }} from 'o1js';
+import {{ Field, Bool, verify }} from 'o1js';
 import {{ circuit }} from './{circuit_name}.js';
 import fs from 'fs';
 
@@ -371,26 +375,29 @@ async function main() {{
         results.compile_success = true;
         console.error(`Compilation completed in ${{results.compile_time_ms}}ms`);
         
-        // Save verification key (for verify stage)
+        // Save verification key
         fs.writeFileSync('{VK_FILENAME}', JSON.stringify(verificationKey, null, 2));
         
-        // Stage 2: Prove with each input set (prover is cached in memory!)
+        // Stage 2: Prove and verify with each input set (prover is cached in memory!)
         for (let i = 0; i < batchInputs.length; i++) {{
             const iterResult = {{
                 iteration: i,
                 success: false,
                 prove_time_ms: 0,
+                verify_time_ms: 0,
                 public_output: null,
-                error: null
+                error: null,
+                verify_error: null
             }};
             
             try {{
                 const inputs = batchInputs[i];
-                console.error(`Proving iteration ${{i + 1}}/${{batchInputs.length}}...`);
+                console.error(`Iteration ${{i + 1}}/${{batchInputs.length}}: Proving...`);
                 
                 // Convert inputs to o1js types
                 const typedInputs = [{input_conversion}];
                 
+                // Prove
                 const proveStart = Date.now();
                 const result = await circuit.compute(...typedInputs);
                 iterResult.prove_time_ms = Date.now() - proveStart;
@@ -405,19 +412,29 @@ async function main() {{
                     iterResult.public_output = JSON.stringify(result.publicOutput);
                 }}
                 
-                // Save proof for last iteration (for verify stage)
-                if (i === batchInputs.length - 1) {{
-                    const proofJson = result.proof.toJSON();
-                    fs.writeFileSync('{PROOF_FILENAME}', JSON.stringify({{
-                        proof: proofJson,
-                        publicOutput: iterResult.public_output
-                    }}, null, 2));
+                // Verify immediately after proving
+                console.error(`  Verifying...`);
+                try {{
+                    const verifyStart = Date.now();
+                    const isValid = await verify(result.proof, verificationKey);
+                    iterResult.verify_time_ms = Date.now() - verifyStart;
+                    
+                    if (!isValid) {{
+                        iterResult.verify_error = "Proof verification returned false";
+                        console.error(`  Verification failed: proof is invalid`);
+                    }} else {{
+                        console.error(`  Verified in ${{iterResult.verify_time_ms}}ms`);
+                    }}
+                }} catch (verifyErr) {{
+                    iterResult.verify_error = verifyErr.message;
+                    console.error(`  Verification error: ${{verifyErr.message}}`);
                 }}
                 
-                console.error(`  Iteration ${{i + 1}} proved in ${{iterResult.prove_time_ms}}ms`);
+                console.error(`  Iteration ${{i + 1}} completed: proved in ${{iterResult.prove_time_ms}}ms, verified in ${{iterResult.verify_time_ms}}ms`);
+                
             }} catch (error) {{
                 iterResult.error = error.message;
-                console.error(`  Iteration ${{i + 1}} failed: ${{error.message}}`);
+                console.error(`  Iteration ${{i + 1}} prove failed: ${{error.message}}`);
             }}
             
             results.iterations.push(iterResult);
@@ -793,8 +810,10 @@ class BatchIterationResult:
     iteration: int
     success: bool
     prove_time: float | None
+    verify_time: float | None
     public_output: str | None
     error: str | None
+    verify_error: str | None = None
 
 
 @dataclass
@@ -838,7 +857,7 @@ def execute_batch_compile_and_prove(
     inputs_file = project_dir / BATCH_INPUTS_FILENAME
     inputs_file.write_text(json.dumps(inputs_for_json))
     
-    logger.debug(f"Running batch compile+prove in {project_dir} with {len(all_inputs)} iterations")
+    logger.debug(f"Running batch compile+prove+verify in {project_dir} with {len(all_inputs)} iterations")
     status = run_stage_runner(project_dir, BATCH_RUNNER_FILENAME, timeout=timeout)
     
     # Read results from file (more reliable than parsing stdout)
@@ -853,8 +872,10 @@ def execute_batch_compile_and_prove(
                     iteration=iter_data.get("iteration", 0),
                     success=iter_data.get("success", False),
                     prove_time=iter_data.get("prove_time_ms", 0) / 1000.0 if iter_data.get("prove_time_ms") else None,
+                    verify_time=iter_data.get("verify_time_ms", 0) / 1000.0 if iter_data.get("verify_time_ms") else None,
                     public_output=iter_data.get("public_output"),
                     error=iter_data.get("error"),
+                    verify_error=iter_data.get("verify_error"),
                 ))
             
             return BatchResult(
@@ -1038,21 +1059,29 @@ def run_metamorphic_tests_batch(
     logger.debug(f"Generated {len(all_inputs)} input sets for batch execution")
     
     # ================================================================
-    # Stage 1: Batch Compile + Prove (compile ONCE, prove MANY times)
+    # Stage 1: Batch Compile + Prove (PARALLEL execution for C1 and C2)
     # ================================================================
     
     # Calculate generous timeout: base compile (180s) + 30s per prove iteration
     batch_timeout = 180.0 + (30.0 * config.test_iterations)
     
-    logger.info(f"Stage 1: Batch compile+prove (c1: {config.test_iterations} iterations)...")
-    c1_batch_result = execute_batch_compile_and_prove(
-        c1_project, all_inputs, input_types, timeout=batch_timeout
-    )
+    logger.info(f"Stage 1: Batch compile+prove+verify (c1 & c2 in parallel: {config.test_iterations} iterations each)...")
     
-    logger.info(f"Stage 1: Batch compile+prove (c2: {config.test_iterations} iterations)...")
-    c2_batch_result = execute_batch_compile_and_prove(
-        c2_project, all_inputs, input_types, timeout=batch_timeout
-    )
+    # Run C1 and C2 in parallel using ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        # Submit both tasks
+        future_c1 = executor.submit(
+            execute_batch_compile_and_prove,
+            c1_project, all_inputs, input_types, batch_timeout
+        )
+        future_c2 = executor.submit(
+            execute_batch_compile_and_prove,
+            c2_project, all_inputs, input_types, batch_timeout
+        )
+        
+        # Wait for both to complete
+        c1_batch_result = future_c1.result()
+        c2_batch_result = future_c2.result()
     
     logger.debug(f"Batch execution done: c1_compile={c1_batch_result.compile_success} ({c1_batch_result.compile_time or 0:.2f}s), "
                 f"c2_compile={c2_batch_result.compile_success} ({c2_batch_result.compile_time or 0:.2f}s)")
@@ -1122,16 +1151,22 @@ def run_metamorphic_tests_batch(
         iteration.c1_prove = c1_iter.success
         iteration.c1_prove_time = c1_iter.prove_time
         iteration.c1_output = c1_iter.public_output
+        iteration.c1_verify = c1_iter.verify_error is None  # True if no verify error
+        iteration.c1_verify_time = c1_iter.verify_time
         
         iteration.c2_prove = c2_iter.success
         iteration.c2_prove_time = c2_iter.prove_time
         iteration.c2_output = c2_iter.public_output
+        iteration.c2_verify = c2_iter.verify_error is None  # True if no verify error
+        iteration.c2_verify_time = c2_iter.verify_time
         
         # Metamorphic comparison
         c1_success = c1_iter.success
         c2_success = c2_iter.success
         c1_error = c1_iter.error
         c2_error = c2_iter.error
+        c1_verify_error = c1_iter.verify_error
+        c2_verify_error = c2_iter.verify_error
         
         c1_assertion_fail = not c1_success and is_assertion_error(c1_error)
         c2_assertion_fail = not c2_success and is_assertion_error(c2_error)
@@ -1166,22 +1201,52 @@ def run_metamorphic_tests_batch(
             result.iterations.append(iteration)
             continue
         
-        # Case 5: Both succeeded - check outputs match
+        # Case 5: Both proved successfully - check verification and outputs
+        # NEW: Check verification status
+        c1_verify_ok = c1_verify_error is None
+        c2_verify_ok = c2_verify_error is None
+        
+        # Case 5a: One verified but the other didn't - metamorphic violation!
+        if c1_verify_ok and not c2_verify_ok:
+            iteration.error = MinaError.METAMORPHIC_VIOLATION_VERIFICATION
+            logger.warning(f"Iteration {i+1}: Metamorphic violation - c1 verified but c2 failed: {c2_verify_error}")
+            result.iterations.append(iteration)
+            break
+        
+        if not c1_verify_ok and c2_verify_ok:
+            iteration.error = MinaError.METAMORPHIC_VIOLATION_VERIFICATION
+            logger.warning(f"Iteration {i+1}: Metamorphic violation - c2 verified but c1 failed: {c1_verify_error}")
+            result.iterations.append(iteration)
+            break
+        
+        # Case 5b: Both failed verification - record and continue
+        if not c1_verify_ok and not c2_verify_ok:
+            iteration.c1_ignored_error = c1_verify_error
+            iteration.c2_ignored_error = c2_verify_error
+            logger.debug(f"Iteration {i+1}: Both circuits failed verification (ignored): c1={c1_verify_error}, c2={c2_verify_error}")
+            result.iterations.append(iteration)
+            continue
+        
+        # Case 5c: Both verified successfully - check outputs match
         if c1_iter.public_output != c2_iter.public_output:
             iteration.error = MinaError.DIVERGING_SIGNALS
             logger.warning(f"Iteration {i+1}: Diverging outputs - c1={c1_iter.public_output}, c2={c2_iter.public_output}")
             result.iterations.append(iteration)
             break
         
-        logger.debug(f"Iteration {i+1}: passed (output={c1_iter.public_output})")
+        logger.debug(f"Iteration {i+1}: passed (output={c1_iter.public_output}, verified)")
         result.iterations.append(iteration)
         
         # Update online tuning
         if online_tuning is not None:
             if c1_iter.prove_time:
                 online_tuning.add_prove_or_verify_time(c1_iter.prove_time)
+            if c1_iter.verify_time:
+                online_tuning.add_prove_or_verify_time(c1_iter.verify_time)
             if c2_iter.prove_time:
                 online_tuning.add_prove_or_verify_time(c2_iter.prove_time)
+            if c2_iter.verify_time:
+                online_tuning.add_prove_or_verify_time(c2_iter.verify_time)
     
     # Add compile times to online tuning (once, at the end)
     if online_tuning is not None:

@@ -6,6 +6,7 @@ This module implements the main metamorphic testing pipeline for Mina/o1js circu
 
 from pathlib import Path
 from random import Random
+import shutil
 import time
 
 from circuzz.common.metamorphism import MetamorphicCircuitPair, MetamorphicKind
@@ -24,29 +25,59 @@ from .helper import run_metamorphic_tests
 logger = get_color_logger()
 
 
+def _safe_copytree(src_dir: Path, dst_dir: Path) -> None:
+    """
+    Best-effort directory copy for saving artifacts.
+    """
+    try:
+        if src_dir.exists() and src_dir.is_dir():
+            shutil.copytree(src_dir, dst_dir, dirs_exist_ok=True)
+    except Exception:
+        pass
+
+
 def save_error_metamorphic_circuit_pair(
     save_path: Path,
     mina_code: str,
     mina_code_tf: str,
+    *,
+    working_dir: Path | None = None,
 ):
     """
     Save error circuit pair to disk for inspection.
+    Saves:
+      - circuit.ts + circuit_transformed.ts (always)
+      - plus, if working_dir is given: copies full c1_* and c2_* project folders
+        to keep:
+          - generated TypeScript and JavaScript
+          - verification-key.json
+          - batch-inputs.json, batch-results.json
+          - proof.json (if generated)
+          - package.json, tsconfig.json
+          - any execution logs and artifacts
     
     Args:
         save_path: Base directory for saving errors
         mina_code: Original Mina/o1js code
         mina_code_tf: Transformed Mina/o1js code
+        working_dir: Optional working directory containing project folders
     """
     error_dir = save_path / "errors"
+    error_dir.mkdir(parents=True, exist_ok=True)
     
     num_of_subdirs = len(list(error_dir.glob("error_*")))
     current_error_dir = error_dir / f"error_{num_of_subdirs + 1}"
     current_error_dir.mkdir(parents=True, exist_ok=True)
     
-    with open(current_error_dir / "circuit.ts", "w") as f:
-        f.write(mina_code)
-    with open(current_error_dir / "circuit_transformed.ts", "w") as f:
-        f.write(mina_code_tf)
+    (current_error_dir / "circuit.ts").write_text(mina_code)
+    (current_error_dir / "circuit_transformed.ts").write_text(mina_code_tf)
+    
+    # Copy complete project directories with all artifacts
+    if working_dir is not None:
+        # Find c1 and c2 project directories
+        for project_dir in working_dir.iterdir():
+            if project_dir.is_dir() and (project_dir.name.startswith("c1_") or project_dir.name.startswith("c2_")):
+                _safe_copytree(project_dir, current_error_dir / project_dir.name)
 
 
 def run_mina_metamorphic_tests(
@@ -121,7 +152,12 @@ def run_mina_metamorphic_tests(
     has_error = any(iteration.error is not None for iteration in mina_result.iterations)
     logger.debug(f"Has error: {has_error}")
     if has_error and mina_result.original_code and mina_result.transformed_code:
-        save_error_metamorphic_circuit_pair(report_dir, mina_result.original_code, mina_result.transformed_code)
+        save_error_metamorphic_circuit_pair(
+            report_dir, 
+            mina_result.original_code, 
+            mina_result.transformed_code,
+            working_dir=working_dir,
+        )
     
     # Create data entries for each iteration
     data_entries: list[DataEntry] = []
