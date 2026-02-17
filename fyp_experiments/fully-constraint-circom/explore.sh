@@ -21,7 +21,7 @@ CIRCOM_CONFIG=fyp_experiments/fully-constraint-circom/config/circom.json
 
 IMAGE_CIRCOM_DEFAULT="localhost/circom-latest:latest"
 
-SEED=42
+SEED=115
 VERBOSITY=3
 USE_TMP=1
 
@@ -95,23 +95,25 @@ function start() {
 
     # start explorer
     if [[ $USE_TMP -eq 1 ]]; then
-        podman run --timeout=$PODMAN_TIMEOUT --pids-limit=-1 --cpus=$4 -v $CIRCUZZ_ROOT/:/app -v $TMP_DIR:/tmp --rm $2 python3 cli.py explore --tool $1 -v$VERBOSITY --timeout $TOOL_TIMEOUT --working-dir $EXPLORE_WORK_DIR --report-dir $PREFIXED_EXPLORE_REP_DIR --seed $5 --config $CONFIG > $LOG_DIR_RUN/$3-explore.log 2>&1 &
+        podman run --timeout=$PODMAN_TIMEOUT --pids-limit=-1 --cpus=$4 -v $CIRCUZZ_ROOT/:/app -v $TMP_DIR:/tmp --rm $2 python3 cli.py explore --tool $1 -v$VERBOSITY --timeout $TOOL_TIMEOUT --working-dir $EXPLORE_WORK_DIR --report-dir $PREFIXED_EXPLORE_REP_DIR --seed $5 --config $CONFIG > $LOG_DIR_RUN/$3-explore.log 2>&1
     else
-        podman run --timeout=$PODMAN_TIMEOUT --pids-limit=-1 --cpus=$4 -v $CIRCUZZ_ROOT/:/app --rm $2 python3 cli.py explore --tool $1 -v$VERBOSITY --timeout $TOOL_TIMEOUT --working-dir $EXPLORE_WORK_DIR --report-dir $PREFIXED_EXPLORE_REP_DIR --seed $5 --config $CONFIG > $LOG_DIR_RUN/$3-explore.log 2>&1 &
+        podman run --timeout=$PODMAN_TIMEOUT --pids-limit=-1 --cpus=$4 -v $CIRCUZZ_ROOT/:/app --rm $2 python3 cli.py explore --tool $1 -v$VERBOSITY --timeout $TOOL_TIMEOUT --working-dir $EXPLORE_WORK_DIR --report-dir $PREFIXED_EXPLORE_REP_DIR --seed $5 --config $CONFIG > $LOG_DIR_RUN/$3-explore.log 2>&1
     fi
-
-    wait $(jobs -p)
 }
 
 # circom
 if [[ $CIRCOM_NUM -ne 0 ]]; then
+    PIDS=()
     for i in $(seq 1 $CIRCOM_NUM);
     do
         R=$RANDOM
         start circom $IMAGE_CIRCOM_DEFAULT circom-$i $CIRCOM_CPUS $R &
+        PIDS+=($!)
         echo "Started circom $i/$CIRCOM_NUM with seed $R ..."
         sleep $WAIT_BETWEEN
     done
+
+    wait "${PIDS[@]}"
 fi
 
 end=`date +%s`
