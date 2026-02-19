@@ -320,47 +320,58 @@ def prove_and_compare \
             |__ src/..
             |__ target/
                     |__ witness.gz
-                    |__ Test.json
+                    |__ *.json
     ```
-    where the `target` folder was a product of `noir execute`.
+    where the `target` folder is a product of `nargo execute`.
     """
 
+
+    # Log input sizes before proof generation
+    try:
+        prover_toml_orig = original / "Prover.toml"
+        prover_toml_tf = transformed / "Prover.toml"
+        if prover_toml_orig.is_file():
+            logger.info(f"[noir_prove] Original Prover.toml size: {prover_toml_orig.stat().st_size} bytes")
+        if prover_toml_tf.is_file():
+            logger.info(f"[noir_prove] Transformed Prover.toml size: {prover_toml_tf.stat().st_size} bytes")
+    except Exception as e:
+        logger.warning(f"[noir_prove] Failed to log file sizes: {e}")
 
     witness_orig = original / "target" / (WITNESS_NAME + ".gz")
     witness_tf = transformed / "target" / (WITNESS_NAME + ".gz")
     assert witness_orig.is_file(), "sanity check for available witness file"
     assert witness_tf.is_file(), "sanity check for available witness file"
-
-    noir_json_orig = original / "target" / (PROJECT_NAME + ".json")
-    noir_json_tf = transformed / "target" / (PROJECT_NAME + ".json")
-    assert noir_json_orig.is_file(), "sanity check for available noir json file"
-    assert noir_json_tf.is_file(), "sanity check for available noir json file"
-
+    noir_json_orig = _resolve_noir_program_json(original)
+    noir_json_tf = _resolve_noir_program_json(transformed)
+    assert noir_json_orig is not None and noir_json_orig.is_file(), "sanity check for available noir json file"
+    assert noir_json_tf is not None and noir_json_tf.is_file(), "sanity check for available noir json file"
     proof_orig = original / "proof"
     proof_tf = transformed / "proof"
+    vk_orig = original / "target" / "vk"
+    vk_tf = transformed / "target" / "vk"
 
-    # Log circuit, witness, and input sizes before proof generation
-    try:
-        circuit_size_orig = noir_json_orig.stat().st_size
-        circuit_size_tf = noir_json_tf.stat().st_size
-        witness_size_orig = witness_orig.stat().st_size
-        witness_size_tf = witness_tf.stat().st_size
-        logger.info(f"[bb_prove] Original circuit JSON size: {circuit_size_orig} bytes")
-        logger.info(f"[bb_prove] Transformed circuit JSON size: {circuit_size_tf} bytes")
-        logger.info(f"[bb_prove] Original witness size: {witness_size_orig} bytes")
-        logger.info(f"[bb_prove] Transformed witness size: {witness_size_tf} bytes")
-        # Optionally, log Prover.toml input size if present
-        prover_toml_orig = original / "Prover.toml"
-        prover_toml_tf = transformed / "Prover.toml"
-        if prover_toml_orig.is_file():
-            logger.info(f"[bb_prove] Original Prover.toml size: {prover_toml_orig.stat().st_size} bytes")
-        if prover_toml_tf.is_file():
-            logger.info(f"[bb_prove] Transformed Prover.toml size: {prover_toml_tf.stat().st_size} bytes")
-    except Exception as e:
-        logger.warning(f"[bb_prove] Failed to log file sizes: {e}")
+    # With modern bb CLI, prove expects a VK path for ultra_honk.
+    write_vk_exec_orig = bb_write_vk(noir_json_orig, vk_orig)
+    write_vk_exec_tf = bb_write_vk(noir_json_tf, vk_tf)
+    online_tuning.add_prove_or_verify_time(write_vk_exec_orig.delta_time)
+    online_tuning.add_prove_or_verify_time(write_vk_exec_tf.delta_time)
+    iteration.c1_vk = write_vk_exec_orig.returncode == 0
+    iteration.c1_vk_time = write_vk_exec_orig.delta_time
+    iteration.c2_vk = write_vk_exec_tf.returncode == 0
+    iteration.c2_vk_time = write_vk_exec_tf.delta_time
+    if write_vk_exec_orig.returncode != 0:
+        logger.error("unexpected error occurred during VK-key generation for the original project")
+        logger.debug(write_vk_exec_orig.stderr)
+        iteration.error = NoirError.UNKNOWN_VK_KEY_ERROR
+        return
+    if write_vk_exec_tf.returncode != 0:
+        logger.error("unexpected error occurred during VK-key generation for the transformed project")
+        logger.debug(write_vk_exec_tf.stderr)
+        iteration.error = NoirError.UNKNOWN_VK_KEY_ERROR
+        return
 
-    prove_exec_orig = bb_prove(noir_json_orig, witness_orig, proof_orig)
-    prove_exec_tf = bb_prove(noir_json_tf, witness_tf, proof_tf)
+    prove_exec_orig = bb_prove(noir_json_orig, witness_orig, proof_orig, vk_orig)
+    prove_exec_tf = bb_prove(noir_json_tf, witness_tf, proof_tf, vk_tf)
 
     online_tuning.add_prove_or_verify_time(prove_exec_orig.delta_time)
     online_tuning.add_prove_or_verify_time(prove_exec_tf.delta_time)
@@ -376,43 +387,17 @@ def prove_and_compare \
     # NOTE: currently vk generation is not expected to fail!
     if prove_exec_orig.returncode != 0:
         logger.error("unexpected error occurred during proof generation for the original project")
-        logger.error(f"[bb_prove] stderr: {getattr(prove_exec_orig, 'stderr', '')}")
-        logger.error(f"[bb_prove] stdout: {getattr(prove_exec_orig, 'stdout', '')}")
+        logger.error(f"[noir_prove] stderr: {getattr(prove_exec_orig, 'stderr', '')}")
+        logger.error(f"[noir_prove] stdout: {getattr(prove_exec_orig, 'stdout', '')}")
         logger.debug(prove_exec_orig)
         iteration.error = NoirError.UNKNOWN_PROOF_ERROR
         return # abort
     if prove_exec_tf.returncode != 0:
         logger.error("unexpected error occurred during proof generation for the transformed project")
-        logger.error(f"[bb_prove] stderr: {getattr(prove_exec_tf, 'stderr', '')}")
-        logger.error(f"[bb_prove] stdout: {getattr(prove_exec_tf, 'stdout', '')}")
+        logger.error(f"[noir_prove] stderr: {getattr(prove_exec_tf, 'stderr', '')}")
+        logger.error(f"[noir_prove] stdout: {getattr(prove_exec_tf, 'stdout', '')}")
         logger.debug(prove_exec_tf)
         iteration.error = NoirError.UNKNOWN_PROOF_ERROR
-        return # abort
-
-    vk_orig = original / "target" / "vk"
-    vk_tf = transformed / "target" / "vk"
-    write_vk_exec_orig = bb_write_vk(noir_json_orig, vk_orig)
-    write_vk_exec_tf = bb_write_vk(noir_json_tf, vk_tf)
-
-    online_tuning.add_prove_or_verify_time(write_vk_exec_orig.delta_time)
-    online_tuning.add_prove_or_verify_time(write_vk_exec_tf.delta_time)
-
-    # use the key generation for verification as intermediate result
-    iteration.c1_vk = write_vk_exec_orig.returncode == 0
-    iteration.c1_vk_time = write_vk_exec_orig.delta_time
-    iteration.c2_vk = write_vk_exec_tf.returncode == 0
-    iteration.c2_vk_time = write_vk_exec_tf.delta_time
-
-    # NOTE: currently vk generation is not expected to fail!
-    if write_vk_exec_orig.returncode != 0:
-        logger.error("unexpected error occurred during VK-key generation for the original project")
-        logger.debug(write_vk_exec_orig.stderr)
-        iteration.error = NoirError.UNKNOWN_VK_KEY_ERROR
-        return # abort
-    if write_vk_exec_tf.returncode != 0:
-        logger.error("unexpected error occurred during VK-key generation for the transformed project")
-        logger.debug(write_vk_exec_tf.stderr)
-        iteration.error = NoirError.UNKNOWN_VK_KEY_ERROR
         return # abort
 
     verify_exec_orig = bb_verify(vk_orig, proof_orig)
@@ -595,3 +580,111 @@ def run_metamorphic_tests \
                 return noir_result
 
     return noir_result # => all good if this is reached
+
+
+def update_prover_toml_from_model(project_dir: Path, input_map: dict[str, int | bool]):
+    lines: list[str] = []
+    for key, value in input_map.items():
+        if isinstance(value, bool):
+            literal = "true" if value else "false"
+            lines.append(f"{key}={literal}")
+        else:
+            lines.append(f"{key}=\"{value}\"")
+    prover_toml = project_dir / "Prover.toml"
+    with open(prover_toml, "w") as file_handler:
+        file_handler.write("\n".join(lines))
+
+
+def _resolve_noir_program_json(project_dir: Path) -> Path | None:
+    target_dir = project_dir / "target"
+    if not target_dir.is_dir():
+        return None
+    default_json = target_dir / (PROJECT_NAME + ".json")
+    if default_json.is_file():
+        return default_json
+    nargo_toml = project_dir / "Nargo.toml"
+    if nargo_toml.is_file():
+        text = nargo_toml.read_text()
+        match = re.search(r'^\s*name\s*=\s*"([^"]+)"', text, re.MULTILINE)
+        if match is not None:
+            candidate = target_dir / f"{match.group(1)}.json"
+            if candidate.is_file():
+                return candidate
+    json_candidates = sorted(target_dir.glob("*.json"))
+    return json_candidates[0] if len(json_candidates) == 1 else None
+
+
+def run_smt_pipeline_tests_from_project(
+    project_dir: Path,
+    models: list[dict[str, int | bool]],
+    required_inputs: list[str],
+    online_tuning: OnlineTuning,
+) -> NoirResult:
+    noir_result = NoirResult()
+    source_file = project_dir / "src" / "main.nr"
+    noir_result.original_code = source_file.read_text() if source_file.is_file() else None
+    noir_result.transformed_code = noir_result.original_code
+
+    for model in models:
+        iteration = TestIteration()
+        noir_result.iterations.append(iteration)
+
+        for required in required_inputs:
+            if required not in model:
+                iteration.error = NoirError.UNKNOWN_EXECUTION_ERROR
+                iteration.c1_ignored_error = f"missing required model input '{required}'"
+                return noir_result
+        model_inputs = {k: model[k] for k in required_inputs}
+        update_prover_toml_from_model(project_dir, model_inputs)
+
+        exec_status = noir_execute(project_dir, WITNESS_NAME, EXPRESSION_WIDTH_DEFAULT)
+        online_tuning.add_general_execution_time(exec_status.delta_time)
+        iteration.c1_execute = exec_status.returncode == 0
+        iteration.c1_execute_time = exec_status.delta_time
+        if exec_status.returncode != 0:
+            iteration.error = NoirError.UNKNOWN_EXECUTION_ERROR
+            iteration.c1_ignored_error = remove_ansi_escape_sequences(exec_status.stderr or exec_status.stdout)
+            return noir_result
+
+        witness_file = project_dir / "target" / (WITNESS_NAME + ".gz")
+        if not witness_file.is_file():
+            iteration.error = NoirError.UNKNOWN_EXECUTION_ERROR
+            iteration.c1_ignored_error = "missing witness artifact after execution"
+            return noir_result
+
+        noir_json = _resolve_noir_program_json(project_dir)
+        if noir_json is None or not noir_json.is_file():
+            iteration.error = NoirError.UNKNOWN_EXECUTION_ERROR
+            iteration.c1_ignored_error = "missing noir json artifact after execution"
+            return noir_result
+
+        proof = project_dir / "proof"
+        vk = project_dir / "target" / "vk"
+        vk_exec = bb_write_vk(noir_json, vk)
+        online_tuning.add_prove_or_verify_time(vk_exec.delta_time)
+        iteration.c1_vk = vk_exec.returncode == 0
+        iteration.c1_vk_time = vk_exec.delta_time
+        if vk_exec.returncode != 0:
+            iteration.error = NoirError.UNKNOWN_VK_KEY_ERROR
+            iteration.c1_ignored_error = remove_ansi_escape_sequences(vk_exec.stderr or vk_exec.stdout)
+            return noir_result
+
+        prove_exec = bb_prove(noir_json, witness_file, proof, vk)
+        online_tuning.add_prove_or_verify_time(prove_exec.delta_time)
+        iteration.c1_bb_prove = prove_exec.returncode == 0
+        iteration.c1_bb_prove_time = prove_exec.delta_time
+        if prove_exec.returncode != 0:
+            iteration.error = NoirError.UNKNOWN_PROOF_ERROR
+            iteration.c1_ignored_error = remove_ansi_escape_sequences(prove_exec.stderr or prove_exec.stdout)
+            return noir_result
+
+        verify_exec = bb_verify(vk, proof)
+        online_tuning.add_prove_or_verify_time(verify_exec.delta_time)
+        iteration.c1_bb_verify = verify_exec.returncode == 0
+        iteration.c1_bb_verify_time = verify_exec.delta_time
+        if verify_exec.returncode != 0:
+            iteration.error = NoirError.UNKNOWN_VERIFICATION_ERROR
+            iteration.c1_ignored_error = remove_ansi_escape_sequences(verify_exec.stderr or verify_exec.stdout)
+            return noir_result
+
+    return noir_result

@@ -1,20 +1,6 @@
 from dataclasses import dataclass
-from enum import StrEnum
-from pathlib import Path
 
-class OracleType(StrEnum):
-    CIRCUZZ = "circuzz"
-    PICUS = "picus"
-
-    @classmethod
-    def from_str(cls, value: str) -> 'OracleType':
-        match value:
-            case "circuzz":
-                return OracleType.CIRCUZZ # Default circuzz oracle
-            case "picus":
-                return OracleType.PICUS # PICUS based oracle for detecting under-constrained circuits
-            case _:
-                raise NotImplementedError(f"unimplemented oracle type '{value}', try {list(OracleType)}")
+from backends.common.config_shared import GeneratorSource, OracleType, SMTFusionSettings
 
 @dataclass(frozen=True)
 class CircomConfig():
@@ -45,6 +31,38 @@ class CircomConfig():
 
     # Oracle type
     oracle_type : OracleType
+    # Source used for generation
+    generator_source: GeneratorSource
+    # SMT-fusion shared settings
+    smt_fusion: "SMTFusionSettings"
+
+    @property
+    def smt_solver_path(self) -> str | None:
+        return self.smt_fusion.smt_solver_path
+
+    @property
+    def smt_seed_dir(self) -> str | None:
+        return self.smt_fusion.smt_seed_dir
+
+    @property
+    def smt_num_outputs(self) -> int | None:
+        return self.smt_fusion.smt_num_outputs
+
+    @property
+    def smt_max_models(self) -> int | None:
+        return self.smt_fusion.smt_max_models
+
+    @property
+    def smt_yinyang_config(self) -> str | None:
+        return self.smt_fusion.smt_yinyang_config
+
+    @property
+    def smt_oracle(self) -> str:
+        return self.smt_fusion.smt_oracle
+
+    @property
+    def smt_max_attempts(self) -> int | None:
+        return self.smt_fusion.smt_max_attempts
 
     @classmethod
     def from_dict(cls, value: dict[str, str]) -> 'CircomConfig':
@@ -55,9 +73,11 @@ class CircomConfig():
         likelihood_snark_witness_check = float(value.get("likelihood_snark_witness_check", 0))
         constraint_assignment_probability = float(value.get("constraint_assignment_probability", 0.5))
         oracle_type = OracleType.from_str(value.get("oracle_type", "circuzz"))
+        generator_source = GeneratorSource.from_str(value.get("generator_source", "random_ir"))
         constrain_equality_assertions = bool(value.get("constrain_equality_assertions", False))
         constrain_sharp_inequality_assertions = bool(value.get("constrain_sharp_inequality_assertions", False))
         unwrap_assertion_probability = float(value.get("unwrap_assertion_probability", 0))
+        smt_fusion = SMTFusionSettings.from_dict(value)
 
         return CircomConfig \
             ( boundary_input_probability = boundary_input_probability
@@ -67,6 +87,8 @@ class CircomConfig():
             , constraint_assignment_probability = constraint_assignment_probability
             , unwrap_assertion_probability = unwrap_assertion_probability
             , oracle_type = oracle_type
+            , generator_source = generator_source
+            , smt_fusion = smt_fusion
             , constrain_equality_assertions = constrain_equality_assertions
             , constrain_sharp_inequality_assertions = constrain_sharp_inequality_assertions
             )

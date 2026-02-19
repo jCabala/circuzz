@@ -14,6 +14,7 @@ IMAGE_BASE=circuzz/base
 IMAGE_CIRCOM_BASE=circuzz/circom-base
 IMAGE_CORSET_BASE=circuzz/corset-base
 IMAGE_GNARK_BASE=circuzz/gnark-base
+IMAGE_NOIR_TOOLCHAIN_BASE=circuzz/noir-toolchain-base
 IMAGE_NOIR_BASE=circuzz/noir-base
 
 # ----------------------------------

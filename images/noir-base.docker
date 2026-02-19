@@ -1,4 +1,4 @@
-FROM circuzz/base
+FROM circuzz/noir-toolchain-base
 
 # get special dependency needed for building noir from scratch
 RUN apt-get -y install \

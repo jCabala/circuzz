@@ -3,6 +3,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 import resource
+import os
 from typing import Any, Callable
 
 from .colorlogs import get_color_logger
@@ -70,15 +71,21 @@ def execute_command \
     , working_dir: Path | None = None
     , timeout: float | None = None
     , memory: int | None = None
+    , env: dict[str, str] | None = None
     ) -> ExecStatus:
 
     logger.info("execute: " + " ".join(command))
     logger.debug(f"    - timeout: {timeout}")
     logger.debug(f"    - memory-limit: {memory}")
     logger.debug(f"    - working_dir: {working_dir}")
+    logger.debug(f"    - custom-env: {env is not None}")
 
     start_time = time.time()
     is_timeout = False
+    run_env = os.environ.copy()
+    if env is not None:
+        run_env.update(env)
+
     try:
         complete_proc = subprocess.run\
             ( command
@@ -89,6 +96,7 @@ def execute_command \
             , stderr=subprocess.PIPE
             , bufsize=-1
             , cwd=working_dir
+            , env=run_env
             , preexec_fn=generate_preexec_fn_memory_limit(memory)
             , timeout=timeout
             )

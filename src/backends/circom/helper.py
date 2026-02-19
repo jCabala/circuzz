@@ -288,6 +288,15 @@ class CircomManager():
         with open(self.unsafe_circuit_txt, 'w') as file_handler:
             file_handler.write(str(circuit))
 
+    def setup_with_source(self, circuit_name: str, source_code: str):
+        self.circuit = Circuit(circuit_name, [], [], [])
+        self.error = None
+        clean_or_create_dir(self.unsafe_project)
+        with open(self.unsafe_circuit_circom, "w") as file_handler:
+            file_handler.write(source_code)
+        with open(self.unsafe_circuit_txt, "w") as file_handler:
+            file_handler.write(source_code)
+
     def update(self, inputs: dict[str, int]):
         stringified_inputs = {k: str(v) for k, v in inputs.items()}
         input_source = json.dumps(stringified_inputs, indent=4)
@@ -984,3 +993,77 @@ def run_metamorphic_tests \
         # TODO: compare proof output json files
 
     return circom_result
+
+
+def _as_circom_input(value: int | bool) -> int:
+    if isinstance(value, bool):
+        return 1 if value else 0
+    return value
+
+
+def run_smt_pipeline_tests_from_source(
+    circuit_name: str,
+    circom_source: str,
+    models: list[dict[str, int | bool]],
+    curve: CircomCurve,
+    working_dir: Path,
+    config: Config,
+    online_tuning: OnlineTuning,
+) -> CircomResult:
+    clean_or_create_dir(working_dir)
+    manager = CircomManager(working_dir / "origin", online_tuning)
+    manager.setup_with_source(circuit_name, circom_source)
+    manager.compile(curve, CircomOptimization.O0)
+
+    result = CircomResult()
+    result.original_code = circom_source
+    result.transformed_code = circom_source
+
+    compile_iteration = TestIteration()
+    compile_iteration.update(manager, proof_system=None)
+    if manager.is_stop():
+        compile_iteration.error = manager.error
+        result.iterations.append(compile_iteration)
+        return result
+
+    witness_choice = WitnessChoice.BOTH if config.circom.likelihood_cpp_witness_generation > 0 else WitnessChoice.JS_ONLY
+    for model in models:
+        iteration = TestIteration()
+        result.iterations.append(iteration)
+
+        if manager.compile_exec is not None:
+            iteration.update(manager, proof_system=None)
+
+        input_map = {k: _as_circom_input(v) for k, v in model.items()}
+        manager.update(input_map)
+        manager.generate_witness(witness_choice)
+        if manager.is_stop():
+            iteration.update(manager, proof_system=None)
+            iteration.error = manager.error
+            return result
+
+        if config.circom.likelihood_snark_witness_check > 0:
+            manager.check_witness()
+            if manager.is_stop():
+                iteration.update(manager, proof_system=None)
+                iteration.error = manager.error
+                return result
+
+        # snarkjs prove/verify in this setup is only valid for BN128 PTAU.
+        # For other curves we stop after witness stages.
+        if curve == CircomCurve.BN128:
+            manager.prove(ProofSystem.GROTH16)
+            if manager.is_stop():
+                iteration.update(manager, proof_system=ProofSystem.GROTH16)
+                iteration.error = manager.error
+                return result
+            manager.verify(ProofSystem.GROTH16)
+            if manager.is_stop():
+                iteration.update(manager, proof_system=ProofSystem.GROTH16)
+                iteration.error = manager.error
+                return result
+            iteration.update(manager, proof_system=ProofSystem.GROTH16)
+        else:
+            iteration.update(manager, proof_system=None)
+
+    return result

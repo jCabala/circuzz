@@ -24,6 +24,7 @@ def noir_execute(working_dir: Path, witness_name: str, expr_width: int = 4) -> E
         ]
     return execute_command(command, "noir-execute", working_dir)
 
+
 #
 # Get current version
 #
@@ -34,10 +35,10 @@ def noir_version() -> ExecStatus:
     return execute_command(command, "noir-version")
 
 #
-# bb, noir prover and verifier
+# bb prover and verifier
 #
 
-def bb_prove(noir_json: Path, witness_gz: Path, proof: Path) -> ExecStatus:
+def bb_prove(noir_json: Path, witness_gz: Path, proof: Path, vk: Path | None = None) -> ExecStatus:
     assert shutil.which("bb"), "Unable to find 'bb' in PATH!"
     command = \
         [ shutil.which("bb")
@@ -46,7 +47,10 @@ def bb_prove(noir_json: Path, witness_gz: Path, proof: Path) -> ExecStatus:
         , "-w", witness_gz.as_posix()
         , "-o", proof.as_posix()
         ]
+    if vk is not None:
+        command.extend(["-k", vk.as_posix()])
     return execute_command(command, "noir-bb-prove")
+
 
 def bb_write_vk(noir_json: Path, vk: Path) -> ExecStatus:
     assert shutil.which("bb"), "Unable to find 'bb' in PATH!"
@@ -57,6 +61,7 @@ def bb_write_vk(noir_json: Path, vk: Path) -> ExecStatus:
         , "-o", vk.as_posix()
         ]
     return execute_command(command, "noir-bb-write-vk")
+
 
 def bb_verify(vk: Path, proof: Path) -> ExecStatus:
     assert shutil.which("bb"), "Unable to find 'bb' in PATH!"

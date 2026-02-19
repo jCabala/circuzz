@@ -23,6 +23,7 @@ IMAGE_BASE=circuzz/base
 IMAGE_CIRCOM_BASE=circuzz/circom-base
 IMAGE_CORSET_BASE=circuzz/corset-base
 IMAGE_GNARK_BASE=circuzz/gnark-base
+IMAGE_NOIR_TOOLCHAIN_BASE=circuzz/noir-toolchain-base
 IMAGE_NOIR_BASE=circuzz/noir-base
 
 # build flags
@@ -37,6 +38,7 @@ BUILD_CORSET=0
 BUILD_GNARK_BASE=0
 BUILD_GNARK=0
 
+BUILD_NOIR_TOOLCHAIN_BASE=0
 BUILD_NOIR_BASE=0
 BUILD_NOIR=0
 
@@ -153,6 +155,12 @@ fi
 # NOTE: due to noirs download of bb, it is best to not execute it in parallel
 
 if [[ $BUILD_NOIR_BASE -eq 1 ]]; then
+    echo "Building noir toolchain base image ..."
+
+    podman build --logfile="$LOG_FOLDER/noir-toolchain-base.log" -t $IMAGE_NOIR_TOOLCHAIN_BASE -f $CIRCUZZ_ROOT/images/noir-toolchain-base.docker --build-arg=RUST_VERSION=$RUST_VERSION --build-arg=GO_VERSION=$GO_VERSION $CIRCUZZ_ROOT
+
+    echo "Building noir toolchain base image done!"
+
     echo "Building noir base image ..."
 
     podman build --logfile="$LOG_FOLDER/noir-base.log" -t $IMAGE_NOIR_BASE -f $CIRCUZZ_ROOT/images/noir-base.docker $CIRCUZZ_ROOT

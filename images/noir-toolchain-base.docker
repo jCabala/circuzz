@@ -1,15 +1,9 @@
-FROM debian:bookworm
+FROM debian:trixie
 
-# non interactive to not get prompts during installations
 ENV DEBIAN_FRONTEND noninteractive
-
-# explicitly switch to root directory
 WORKDIR /
-
-# explicitly set root user
 USER root
 
-# installation of dependencies from debian repository
 RUN apt-get update && \
     apt-get -y install \
         git \
@@ -26,32 +20,19 @@ RUN apt-get update && \
         nodejs \
         npm
 
-# Python deps needed by sibling smt-solver when invoked from circuzz SMT-fusion mode.
 RUN python3 -m pip install --break-system-packages --no-cache-dir \
         click \
         pysmt \
         z3-solver \
         antlr4-python3-runtime==4.7.2
 
-# create circuzz folder for any kind of circuzz related resources or files
 RUN mkdir -p /circuzz
 
-# -------------------------------------------------------------
-# git settings
-# -------------------------------------------------------------
-
-# NOTE: The noir repo was having trouble during cloning, which is probably related to the
-# postBuffer size or poor internet connection. These statemenets should help the download
-# to succeed.
 RUN git config --global http.postBuffer 4096M && \
     git config --global http.maxRequestBuffer 100M && \
     git config --global core.compression 0 && \
     git config --global http.lowSpeedLimit 0 && \
     git config --global http.lowSpeedTime 999999
-
-# -------------------------------------------------------------
-# go installation
-# -------------------------------------------------------------
 
 ARG GO_VERSION
 
@@ -62,10 +43,6 @@ RUN tar -xvf go${GO_VERSION}.linux-amd64.tar.gz && \
 
 ENV GOROOT="/go"
 ENV PATH="${GOROOT}/bin:${PATH}"
-
-# -------------------------------------------------------------
-# rust installation
-# -------------------------------------------------------------
 
 ARG RUST_VERSION
 

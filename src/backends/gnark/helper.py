@@ -104,6 +104,17 @@ class GnarkResult():
     iterations : dict[str,list[TestIterations]] = field(default_factory=dict)
     circuit_codes : dict[str, tuple[str, str]] = field(default_factory=dict)  # Maps circuit name to (original_code, transformed_code)
 
+
+def _compact_error_message(stdout: str, stderr: str, max_len: int = 4000) -> str:
+    text = stderr.strip()
+    if text == "":
+        text = stdout.strip()
+    if text == "":
+        return "no stdout/stderr captured"
+    if len(text) > max_len:
+        return text[:max_len] + "\n...[truncated]..."
+    return text
+
 def setup_project(test_dir: Path) -> Path:
     """
     Setup a gnark project in the given test directory. The return value
@@ -454,3 +465,107 @@ def run_metamorphic_tests \
 
     logger.debug(test_status)
     return gnark_result
+
+
+def _as_gnark_input(value: int | bool) -> int:
+    if isinstance(value, bool):
+        return 1 if value else 0
+    return value
+
+
+def _extract_struct_name_from_source(source: str) -> str:
+    match = re.search(r"type\s+([A-Za-z0-9_]+)\s+struct\s*\{", source)
+    if match is None:
+        raise ValueError("unable to extract circuit struct name from gnark source")
+    return match.group(1)
+
+
+def _extract_input_fields_from_source(source: str) -> list[str]:
+    fields = re.findall(r"FVar_([A-Za-z0-9_]+)\s+frontend\.Variable", source)
+    return fields
+
+
+def run_smt_pipeline_tests_from_go_source(
+    circuit_name: str,
+    go_source: str,
+    models: list[dict[str, int | bool]],
+    curve: GnarkCurve,
+    working_dir: Path,
+    config: Config,
+    online_tuning: OnlineTuning,
+) -> tuple[list[TestIterations], float]:
+    template_test_go = setup_project(working_dir)
+    struct_name = _extract_struct_name_from_source(go_source)
+    inputs = _extract_input_fields_from_source(go_source)
+    if len(inputs) == 0:
+        raise ValueError("no gnark input fields found in generated source")
+
+    test_name = f"SMT_{circuit_name}".replace("-", "_")
+    with open(template_test_go, "a") as file_handler:
+        file_handler.write("\n")
+        file_handler.write(go_source)
+        file_handler.write("\n\n")
+        file_handler.write(f"func Test_{test_name}(t *testing.T) {{\n")
+        file_handler.write("    t.Parallel()\n")
+        file_handler.write(f"    curve := ecc.{curve.value}\n")
+        file_handler.write(f"    var c1 {struct_name}\n")
+        file_handler.write(f"    var c2 {struct_name}\n")
+        file_handler.write("    var co frontend.Circuit = &c2\n")
+        file_handler.write(f"    a1 := {struct_name}{{}}\n")
+        file_handler.write(f"    a2 := {struct_name}{{}}\n")
+        file_handler.write("    type setting struct {\n")
+        file_handler.write("        engine csEngine\n")
+        file_handler.write("        skipProverPercentage float64\n")
+        file_handler.write("        system proofSystem\n")
+        for var in inputs:
+            file_handler.write(f"        FVar_{var} *big.Int\n")
+        file_handler.write("    }\n")
+        file_handler.write(f"    var iterSettings [{len(models)}]setting\n")
+        for idx, model in enumerate(models):
+            file_handler.write(f"    iterSettings[{idx}] = setting{{r1csId, 0.0, groth16Id")
+            for _ in inputs:
+                file_handler.write(", new(big.Int)")
+            file_handler.write("}\n")
+            for var in inputs:
+                if var not in model:
+                    raise ValueError(f"model is missing required gnark input '{var}'")
+                value = _as_gnark_input(model[var])
+                file_handler.write(f"    iterSettings[{idx}].FVar_{var}.SetString(\"{value}\", 10)\n")
+        file_handler.write("    for _, s := range iterSettings {\n")
+        for var in inputs:
+            file_handler.write(f"        a1.FVar_{var} = s.FVar_{var}\n")
+            file_handler.write(f"        a2.FVar_{var} = s.FVar_{var}\n")
+        file_handler.write(f"        st := cmpCircuits(curve, &c1, co, &a1, &a2, s.skipProverPercentage, s.engine, s.system, \"Test_{test_name}\")\n")
+        file_handler.write(f"        log.Printf(\"Test_{test_name}: test status: %v\\n\", st)\n")
+        file_handler.write("        if st != eq {\n")
+        file_handler.write("            t.Errorf(\"Expected '%v', got '%v'.\", \"eq\", st)\n")
+        file_handler.write("            return\n")
+        file_handler.write("        }\n")
+        file_handler.write("    }\n")
+        file_handler.write("}\n")
+
+    test_status = go_test(working_dir, config.gnark.go_test_timeout)
+    iterations: list[TestIterations] = []
+    for _ in models:
+        iterations.append(TestIterations())
+
+    # Parse overall test status as pass/fail per model.
+    lines = test_status.stdout.split("\n")
+    marker = 0
+    for line in lines:
+        if f"Test_{test_name}: test status:" in line:
+            if marker < len(iterations):
+                iterations[marker].go_test_time = test_status.delta_time
+                marker += 1
+    is_timeout = TEST_TIMEOUT_PANIC_STDOUT in test_status.stdout
+    if is_timeout:
+        for i in iterations:
+            i.go_timeout = True
+    if test_status.returncode != 0:
+        idx = min(marker, len(iterations) - 1)
+        iterations[idx].error = GnarkError.UNKNOWN_TEST_FRAMEWORK_ERROR
+        iterations[idx].go_ignored_compiler_error = _compact_error_message(
+            test_status.stdout,
+            test_status.stderr,
+        )
+    return iterations, test_status.delta_time
