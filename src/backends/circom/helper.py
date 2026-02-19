@@ -171,6 +171,7 @@ class CircomError(StrEnum):
     CPP_WITNESS_GENERATION_BUILD_ERROR = "CPP witness generation build error"
     UNKNOWN_CPP_WITNESS_GENERATION_ERROR = "unknown CPP witness generation error"
     UNKNOWN_JS_WITNESS_GENERATION_ERROR = "unknown JS witness generation error"
+    SMT_WITNESS_GENERATION_ERROR = "SMT witness generation error"
     DIVERGING_WTNS_GEN_EXIT_STATUS = "diverging witness exit status for JS and CPP"
     DIVERGING_WTNS_GEN_OUTPUT_SIGNALS = "diverging witness output signals for JS and CPP"
     DIVERGING_WTNS_GEN_FILES = "diverging witness file for JS and CPP"
@@ -1007,6 +1008,7 @@ def run_smt_pipeline_tests_from_source(
     models: list[dict[str, int | bool]],
     curve: CircomCurve,
     optimization: CircomOptimization,
+    rng: Random,
     working_dir: Path,
     config: Config,
     online_tuning: OnlineTuning,
@@ -1038,6 +1040,11 @@ def run_smt_pipeline_tests_from_source(
         input_map = {k: _as_circom_input(v) for k, v in model.items()}
         manager.update(input_map)
         manager.generate_witness(witness_choice)
+        # SMT oracle is strict: every selected model must produce a valid witness.
+        if not manager.is_witness_generated():
+            iteration.update(manager, proof_system=None)
+            iteration.error = manager.error or CircomError.SMT_WITNESS_GENERATION_ERROR
+            return result
         if manager.is_stop():
             iteration.update(manager, proof_system=None)
             iteration.error = manager.error
@@ -1053,17 +1060,18 @@ def run_smt_pipeline_tests_from_source(
         # snarkjs prove/verify in this setup is only valid for BN128 PTAU.
         # For other curves we stop after witness stages.
         if curve == CircomCurve.BN128:
-            manager.prove(ProofSystem.GROTH16)
+            proof_system = rng.choice(list(ProofSystem))
+            manager.prove(proof_system)
             if manager.is_stop():
-                iteration.update(manager, proof_system=ProofSystem.GROTH16)
+                iteration.update(manager, proof_system=proof_system)
                 iteration.error = manager.error
                 return result
-            manager.verify(ProofSystem.GROTH16)
+            manager.verify(proof_system)
             if manager.is_stop():
-                iteration.update(manager, proof_system=ProofSystem.GROTH16)
+                iteration.update(manager, proof_system=proof_system)
                 iteration.error = manager.error
                 return result
-            iteration.update(manager, proof_system=ProofSystem.GROTH16)
+            iteration.update(manager, proof_system=proof_system)
         else:
             iteration.update(manager, proof_system=None)
 

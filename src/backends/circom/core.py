@@ -25,7 +25,7 @@ from experiment.config import Config, OnlineTuning
 
 from .helper import run_metamorphic_tests, run_smt_pipeline_tests_from_source
 from .utils import curve_to_prime
-from .utils import CircomCurve, CircomOptimization, random_circom_curve
+from .utils import CircomCurve, CircomOptimization
 
 logger = get_color_logger()
 
@@ -141,7 +141,11 @@ def run_circom_smt_pipeline_tests(
 
     start_time = time.time()
     rng = Random(seed)
-    curve = random_circom_curve(rng)
+    if rng.random() < config.circom.smt_bn128_probability:
+        curve = CircomCurve.BN128
+    else:
+        non_bn128_curves = [c for c in CircomCurve if c != CircomCurve.BN128]
+        curve = rng.choice(non_bn128_curves)
     fusion_cfg = SMTFusionRunConfig(
         smt_solver_path=config.circom.smt_solver_path,
         smt_seed_dir=config.circom.smt_seed_dir,
@@ -167,6 +171,7 @@ def run_circom_smt_pipeline_tests(
         models=selected_models,
         curve=curve,
         optimization=optimization,
+        rng=rng,
         working_dir=model_working_dir,
         config=config,
         online_tuning=online_tuning,

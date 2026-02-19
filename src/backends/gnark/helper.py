@@ -39,6 +39,7 @@ TEST_EXCEPTION_BULK_TOO_BIG_STDERR = "internal compiler error: NewBulk too big:"
 class GnarkError(StrEnum):
     METAMORPHIC_TEST_FRAMEWORK_ERROR = "metamorphic violation in test cases"
     UNKNOWN_TEST_FRAMEWORK_ERROR = "unknown test framework error"
+    SMT_WITNESS_SOLVE_ERROR = "SMT witness solve error"
 
 @dataclass
 class TestIterations():
@@ -522,7 +523,8 @@ def run_smt_pipeline_tests_from_go_source(
         file_handler.write("    }\n")
         file_handler.write(f"    var iterSettings [{len(models)}]setting\n")
         for idx, model in enumerate(models):
-            file_handler.write(f"    iterSettings[{idx}] = setting{{r1csId, 0.0, groth16Id")
+            # In SMT mode we require full pipeline execution; do not skip prove/verify.
+            file_handler.write(f"    iterSettings[{idx}] = setting{{r1csId, 1.0, groth16Id")
             for _ in inputs:
                 file_handler.write(", new(big.Int)")
             file_handler.write("}\n")
@@ -544,7 +546,7 @@ def run_smt_pipeline_tests_from_go_source(
         file_handler.write("    }\n")
         file_handler.write("}\n")
 
-    test_status = go_test(working_dir, config.gnark.go_test_timeout)
+    test_status = go_test(working_dir, config.gnark.go_test_timeout, verbose=True)
     iterations: list[TestIterations] = []
     for _ in models:
         iterations.append(TestIterations())
@@ -557,6 +559,27 @@ def run_smt_pipeline_tests_from_go_source(
             if marker < len(iterations):
                 iterations[marker].go_test_time = test_status.delta_time
                 marker += 1
+    # SMT oracle is strict: any witness solve error means invalid model replay.
+    for idx, line in enumerate(lines):
+        if f"Test_{test_name}: IsSolved c1 => err" in line or f"Test_{test_name}: IsSolved c2 => err" in line:
+            target_idx = max(0, min(marker, len(iterations) - 1))
+            iterations[target_idx].error = GnarkError.SMT_WITNESS_SOLVE_ERROR
+            start = max(0, idx - 6)
+            end = min(len(lines), idx + 8)
+            snippet = "\n".join(lines[start:end])
+            iterations[target_idx].go_ignored_compiler_error = _compact_error_message(
+                f"detected IsSolved error in SMT replay\n\n{snippet}",
+                test_status.stderr,
+            )
+            return iterations, test_status.delta_time
+    if marker != len(iterations):
+        idx = min(marker, len(iterations) - 1)
+        iterations[idx].error = GnarkError.UNKNOWN_TEST_FRAMEWORK_ERROR
+        iterations[idx].go_ignored_compiler_error = _compact_error_message(
+            test_status.stdout + f"\n\nmissing status markers: got={marker}, expected={len(iterations)}",
+            test_status.stderr,
+        )
+        return iterations, test_status.delta_time
     is_timeout = TEST_TIMEOUT_PANIC_STDOUT in test_status.stdout
     if is_timeout:
         for i in iterations:

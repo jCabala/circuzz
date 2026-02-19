@@ -35,6 +35,8 @@ class CircomConfig():
     generator_source: GeneratorSource
     # SMT-fusion shared settings
     smt_fusion: "SMTFusionSettings"
+    # Probability of picking BN128 curve in SMT mode (BN128 enables prove/verify path).
+    _smt_bn128_probability: float
 
     @property
     def smt_solver_path(self) -> str | None:
@@ -64,6 +66,10 @@ class CircomConfig():
     def smt_max_attempts(self) -> int | None:
         return self.smt_fusion.smt_max_attempts
 
+    @property
+    def smt_bn128_probability(self) -> float:
+        return self._smt_bn128_probability
+
     @classmethod
     def from_dict(cls, value: dict[str, str]) -> 'CircomConfig':
 
@@ -78,6 +84,9 @@ class CircomConfig():
         constrain_sharp_inequality_assertions = bool(value.get("constrain_sharp_inequality_assertions", False))
         unwrap_assertion_probability = float(value.get("unwrap_assertion_probability", 0))
         smt_fusion = SMTFusionSettings.from_dict(value)
+        smt_bn128_probability = float(value.get("smt_bn128_probability", 1.0 / 7.0))
+        if smt_bn128_probability < 0 or smt_bn128_probability > 1:
+            raise ValueError("circom.smt_bn128_probability must be in [0, 1]")
 
         return CircomConfig \
             ( boundary_input_probability = boundary_input_probability
@@ -91,4 +100,5 @@ class CircomConfig():
             , smt_fusion = smt_fusion
             , constrain_equality_assertions = constrain_equality_assertions
             , constrain_sharp_inequality_assertions = constrain_sharp_inequality_assertions
+            , _smt_bn128_probability = smt_bn128_probability
             )
