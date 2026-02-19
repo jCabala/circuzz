@@ -112,6 +112,7 @@ def run_noir_metamorphic_tests \
             , c2_assumptions = len(ir_tf.assumptions())
             , c2_input_signals = len(ir_tf.inputs)
             , c2_output_signals = len(ir_tf.outputs)
+            , noir_inliner_aggressiveness = iteration.noir_inliner_aggressiveness
             , noir_c1_execute = iteration.c1_execute
             , noir_c1_execute_time = iteration.c1_execute_time
             , noir_c2_execute = iteration.c2_execute
@@ -172,6 +173,7 @@ def run_noir_smt_pipeline_tests(
         raise ValueError("missing SMT fusion config: 'smt_num_outputs' and 'smt_max_models' are required")
 
     start_time = time.time()
+    rng = Random(seed)
     fusion_cfg = SMTFusionRunConfig(
         smt_solver_path=config.noir.smt_solver_path,
         smt_seed_dir=config.noir.smt_seed_dir,
@@ -216,6 +218,8 @@ def run_noir_smt_pipeline_tests(
         models=selected_models,
         required_inputs=required_inputs,
         online_tuning=online_tuning,
+        rng=rng,
+        witness_only=config.noir.smt_witness_only,
     )
     test_time = time.time() - start_time
     has_error = any(iteration.error is not None for iteration in noir_result.iterations)
@@ -263,6 +267,7 @@ def run_noir_smt_pipeline_tests(
                 c2_assumptions=0,
                 c2_input_signals=0,
                 c2_output_signals=0,
+                noir_inliner_aggressiveness=iteration.noir_inliner_aggressiveness,
                 noir_c1_execute=iteration.c1_execute,
                 noir_c1_execute_time=iteration.c1_execute_time,
                 noir_c1_vk=iteration.c1_vk,

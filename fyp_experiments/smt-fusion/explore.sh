@@ -26,7 +26,7 @@ NOIR_CONFIG="fyp_experiments/smt-fusion/config/noir.json"
 
 IMAGE_CIRCOM_DEFAULT="localhost/circom-latest:latest"
 IMAGE_GNARK_DEFAULT="localhost/gnark-latest:latest"
-IMAGE_NOIR_DEFAULT="localhost/noir-latest:latest"
+IMAGE_NOIR_DEFAULT="localhost/noir-latest-patched:latest"
 
 SEED=2123
 VERBOSITY=2

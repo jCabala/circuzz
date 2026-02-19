@@ -25,7 +25,7 @@ from experiment.config import Config, OnlineTuning
 
 from .helper import run_metamorphic_tests, run_smt_pipeline_tests_from_source
 from .utils import curve_to_prime
-from .utils import CircomCurve, random_circom_curve
+from .utils import CircomCurve, CircomOptimization, random_circom_curve
 
 logger = get_color_logger()
 
@@ -154,6 +154,7 @@ def run_circom_smt_pipeline_tests(
     )
     program = next_smt_fusion_program(report_dir, fusion_cfg, seed)
     data_entries: list[DataEntry] = []
+    optimization = rng.choice(list(CircomOptimization))
 
     selected_models = program.models[: min(config.circom.test_iterations, len(program.models))]
     if len(selected_models) == 0:
@@ -165,6 +166,7 @@ def run_circom_smt_pipeline_tests(
         circom_source=circom_source,
         models=selected_models,
         curve=curve,
+        optimization=optimization,
         working_dir=model_working_dir,
         config=config,
         online_tuning=online_tuning,

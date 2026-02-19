@@ -7,24 +7,14 @@ USER root
 RUN apt-get update && \
     apt-get -y install \
         git \
-        bat \
-        fd-find \
-        ripgrep \
         curl \
-        vim \
+        ca-certificates \
         python3 \
         python3-pip \
         python3-requests \
         build-essential \
-        lsb-release \
-        nodejs \
-        npm
-
-RUN python3 -m pip install --break-system-packages --no-cache-dir \
-        click \
-        pysmt \
-        z3-solver \
-        antlr4-python3-runtime==4.7.2
+        pkg-config \
+        libssl-dev
 
 RUN mkdir -p /circuzz
 
@@ -34,15 +24,12 @@ RUN git config --global http.postBuffer 4096M && \
     git config --global http.lowSpeedLimit 0 && \
     git config --global http.lowSpeedTime 999999
 
-ARG GO_VERSION
-
-ADD https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz /
-
-RUN tar -xvf go${GO_VERSION}.linux-amd64.tar.gz && \
-    rm -rf go${GO_VERSION}.linux-amd64.tar.gz
-
-ENV GOROOT="/go"
-ENV PATH="${GOROOT}/bin:${PATH}"
+# Python deps needed by circuzz+smt-solver flow in explore runs.
+RUN python3 -m pip install --break-system-packages --no-cache-dir \
+        click \
+        pysmt \
+        z3-solver \
+        antlr4-python3-runtime==4.13.2
 
 ARG RUST_VERSION
 

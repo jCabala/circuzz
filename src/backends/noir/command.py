@@ -9,7 +9,12 @@ from circuzz.common.command import execute_command
 #
 
 
-def noir_execute(working_dir: Path, witness_name: str, expr_width: int = 4) -> ExecStatus:
+def noir_execute(
+    working_dir: Path,
+    witness_name: str,
+    expr_width: int = 4,
+    inliner_aggressiveness: int | None = None,
+) -> ExecStatus:
     assert shutil.which("nargo"), "Unable to find 'nargo' in PATH!"
     command = \
         [ shutil.which("nargo")
@@ -22,6 +27,8 @@ def noir_execute(working_dir: Path, witness_name: str, expr_width: int = 4) -> E
         # Some versions (e.g., 0.38.0) reject this flag with "unexpected argument" error.
         # If using a newer version that supports this flag, uncomment the lines below.  
         ]
+    if inliner_aggressiveness is not None:
+        command += ["--inliner-aggressiveness", str(inliner_aggressiveness)]
     return execute_command(command, "noir-execute", working_dir)
 
 
@@ -46,6 +53,9 @@ def bb_prove(noir_json: Path, witness_gz: Path, proof: Path, vk: Path | None = N
         , "-b", noir_json.as_posix()
         , "-w", witness_gz.as_posix()
         , "-o", proof.as_posix()
+        # Reduce prover memory pressure in newer bb/ultra_honk toolchains.
+        , "--slow_low_memory"
+        , "--storage_budget", "512m"
         ]
     if vk is not None:
         command.extend(["-k", vk.as_posix()])

@@ -69,6 +69,8 @@ class NoirError(StrEnum):
 
 @dataclass
 class TestIteration():
+    noir_inliner_aggressiveness: int | None = None
+
     c1_execute      : bool | None = None
     c1_execute_time : float | None = None
     c2_execute      : bool | None = None
@@ -619,6 +621,8 @@ def run_smt_pipeline_tests_from_project(
     models: list[dict[str, int | bool]],
     required_inputs: list[str],
     online_tuning: OnlineTuning,
+    rng: Random,
+    witness_only: bool = False,
 ) -> NoirResult:
     noir_result = NoirResult()
     source_file = project_dir / "src" / "main.nr"
@@ -628,6 +632,8 @@ def run_smt_pipeline_tests_from_project(
     for model in models:
         iteration = TestIteration()
         noir_result.iterations.append(iteration)
+        inliner_aggressiveness = rng.randrange(0, 1 << 31)
+        iteration.noir_inliner_aggressiveness = inliner_aggressiveness
 
         for required in required_inputs:
             if required not in model:
@@ -637,7 +643,12 @@ def run_smt_pipeline_tests_from_project(
         model_inputs = {k: model[k] for k in required_inputs}
         update_prover_toml_from_model(project_dir, model_inputs)
 
-        exec_status = noir_execute(project_dir, WITNESS_NAME, EXPRESSION_WIDTH_DEFAULT)
+        exec_status = noir_execute(
+            project_dir,
+            WITNESS_NAME,
+            EXPRESSION_WIDTH_DEFAULT,
+            inliner_aggressiveness=inliner_aggressiveness,
+        )
         online_tuning.add_general_execution_time(exec_status.delta_time)
         iteration.c1_execute = exec_status.returncode == 0
         iteration.c1_execute_time = exec_status.delta_time
@@ -651,6 +662,10 @@ def run_smt_pipeline_tests_from_project(
             iteration.error = NoirError.UNKNOWN_EXECUTION_ERROR
             iteration.c1_ignored_error = "missing witness artifact after execution"
             return noir_result
+
+        if witness_only:
+            # Witness generation succeeded for this model; skip proof/verify stage.
+            continue
 
         noir_json = _resolve_noir_program_json(project_dir)
         if noir_json is None or not noir_json.is_file():

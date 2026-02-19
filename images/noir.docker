@@ -51,7 +51,7 @@ ARG NOIR_COMMIT
 # build, installation and clean-up of of noir
 RUN cd /circuzz/noir && \
     git reset --hard ${NOIR_COMMIT} && \
-    cargo install --path ./tooling/nargo_cli --locked && \
+    CARGO_BUILD_JOBS=1 RUSTFLAGS="-Cdebuginfo=0" cargo install --path ./tooling/nargo_cli --locked --jobs 1 && \
     cd .. && \
     rm -rf ./noir
 

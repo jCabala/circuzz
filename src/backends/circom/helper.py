@@ -1006,6 +1006,7 @@ def run_smt_pipeline_tests_from_source(
     circom_source: str,
     models: list[dict[str, int | bool]],
     curve: CircomCurve,
+    optimization: CircomOptimization,
     working_dir: Path,
     config: Config,
     online_tuning: OnlineTuning,
@@ -1013,7 +1014,7 @@ def run_smt_pipeline_tests_from_source(
     clean_or_create_dir(working_dir)
     manager = CircomManager(working_dir / "origin", online_tuning)
     manager.setup_with_source(circuit_name, circom_source)
-    manager.compile(curve, CircomOptimization.O0)
+    manager.compile(curve, optimization)
 
     result = CircomResult()
     result.original_code = circom_source

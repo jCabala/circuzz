@@ -18,6 +18,8 @@ class NoirConfig():
 
     # this value determines how often tests are executed
     test_iterations  : int
+    # in smt_pipeline mode, stop after witness generation (skip bb prove/verify)
+    smt_witness_only: bool
     # SMT-fusion shared settings
     smt_fusion: SMTFusionSettings
 
@@ -55,11 +57,17 @@ class NoirConfig():
         generator_source = GeneratorSource.from_str(value.get("generator_source", "random_ir"))
         boundary_input_probability = float(value.get("boundary_input_probability", 0.1))
         test_iterations  = int(value.get("test_iterations", 5))
+        smt_witness_only_raw = value.get("smt_witness_only", False)
+        if isinstance(smt_witness_only_raw, str):
+            smt_witness_only = smt_witness_only_raw.lower() in ("1", "true", "yes", "on")
+        else:
+            smt_witness_only = bool(smt_witness_only_raw)
         smt_fusion = SMTFusionSettings.from_dict(value)
         return NoirConfig \
           ( oracle_type = oracle_type
           , generator_source = generator_source
           , boundary_input_probability = boundary_input_probability
           , test_iterations = test_iterations
+          , smt_witness_only = smt_witness_only
           , smt_fusion = smt_fusion
           )
