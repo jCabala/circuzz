@@ -23,17 +23,13 @@
       "relations": ["==", "!="],
       "boolean_unary_operators": ["!"],
       "boolean_binary_operators": ["&&", "||", "^^"],
-      "arithmetic_unary_operators": ["-", "~"],
+      "arithmetic_unary_operators": ["-"],
       "arithmetic_binary_operators": [
         "+",
         "-",
         "*",
         "**",
-        "/",
-        "%",
-        "^",
-        "&",
-        "|"
+        "/"
       ],
 
       "is_arithmetic_ternary_supported": true,
@@ -55,7 +51,7 @@
       "max_number_of_assertions": 2,
       "min_number_of_input_variables": 0,
       "max_number_of_input_variables": 2,
-      "min_number_of_output_variables": 0,
+      "min_number_of_output_variables": 1,
       "max_number_of_output_variables": 2,
 
       "max_exponent_value": 4,
@@ -80,15 +76,6 @@
           { "name": "comm-xor", "match": "(?a ^ ?b)", "rewrite": "(?b ^ ?a)" },
           { "name": "zero-or-rev", "match": "(?a | 0)", "rewrite": "?a" },
           { "name": "zero-xor-rev", "match": "(?a ^ 0)", "rewrite": "?a" },
-          {
-            "name": "inv-xor-rev",
-            "match": "0",
-            "rewrite": "($r:int ^ $r:int)"
-          },
-          { "name": "zero-or", "match": "?a:int", "rewrite": "(?a | 0)" },
-          { "name": "zero-xor", "match": "?a:int", "rewrite": "(?a ^ 0)" },
-          { "name": "idem-and", "match": "?a:int", "rewrite": "(?a & ?a)" },
-          { "name": "zero-and", "match": "0", "rewrite": "($r:int & 0)" },
           { "name": "comm-add", "match": "(?a + ?b)", "rewrite": "(?b + ?a)" },
           { "name": "comm-mul", "match": "(?a * ?b)", "rewrite": "(?b * ?a)" },
           {
@@ -446,11 +433,6 @@
             "name": "add-cancel-equ",
             "match": "((?a + ?c) == (?b + ?c))",
             "rewrite": "(?a == ?b)"
-          },
-          {
-            "name": "equ-to-add-cancel",
-            "match": "(?a == ?b)",
-            "rewrite": "((?a + ?c) == (?b + ?c))"
           }
         ],
         "weakening": [

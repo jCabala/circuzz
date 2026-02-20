@@ -33,6 +33,27 @@ cd fyp_experiments/quadratic-circuzz
 ./explore.sh
 ```
 
+## smt-fusion
+
+### Overview
+
+Runs `smt_pipeline` oracle mode for Circom/Gnark/Noir using sibling `smt-solver`
+(`fuse-smt-to-dsl --format circuzz`) and model-replay based stage checks.
+
+### How to run
+
+```bash
+cd fyp_experiments/smt-fusion
+./build_podman.sh
+./explore.sh
+```
+
+Run selected DSLs only:
+
+```bash
+./explore.sh circom noir
+```
+
 ## Scripts
 
 This directory contains some additionall helpful scripts.
@@ -63,3 +84,4 @@ Generates couple circom programs using the quadratic generator.
 
 10. Added zokrates backend
 
+11. Setup fully-constrained-circom experiments

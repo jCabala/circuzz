@@ -129,6 +129,12 @@ fi
 # NOTE: due to noirs download of bb, it is best to not execute it in parallel
 
 if [[ $BUILD_NOIR -eq 1 ]]; then
+    echo "Building noir toolchain base image ..."
+
+    podman build --logfile="$LOG_FOLDER/noir-toolchain-base.log" -t $IMAGE_NOIR_TOOLCHAIN_BASE -f ./images/noir-toolchain-base.docker --build-arg=RUST_VERSION=$RUST_VERSION --build-arg=GO_VERSION=$GO_VERSION .
+
+    echo "Building noir toolchain base image done!"
+
     echo "Building noir base image ..."
 
     podman build --logfile="$LOG_FOLDER/noir-base.log" -t $IMAGE_NOIR_BASE -f ./images/noir-base.docker .

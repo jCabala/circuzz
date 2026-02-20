@@ -167,6 +167,7 @@ class DataEntry():
     # Noir
     #
 
+    noir_inliner_aggressiveness : int   | None = None
     noir_c1_execute        : bool  | None = None
     noir_c1_execute_time   : float | None = None
     noir_c2_execute        : bool  | None = None
@@ -365,6 +366,7 @@ class DataEntry():
             , self._custom_to_str(self.gnark_go_test_time)
             , self._custom_to_str(self.gnark_go_timeout)
             , self._custom_to_str(self.gnark_go_ignored_compiler_error)
+            , self._custom_to_str(self.noir_inliner_aggressiveness)
             , self._custom_to_str(self.noir_c1_execute)
             , self._custom_to_str(self.noir_c1_execute_time)
             , self._custom_to_str(self.noir_c2_execute)
@@ -535,6 +537,7 @@ class DataEntry():
         , "gnark_go_test_time"
         , "gnark_go_timeout"
         , "gnark_go_ignored_compiler_error"
+        , "noir_inliner_aggressiveness"
         , "noir_c1_execute"
         , "noir_c1_execute_time"
         , "noir_c2_execute"
@@ -775,6 +778,7 @@ class DataEntry():
         gnark_go_test_time, \
         gnark_go_timeout, \
         gnark_go_ignored_compiler_error, \
+        noir_inliner_aggressiveness, \
         noir_c1_execute, \
         noir_c1_execute_time, \
         noir_c2_execute, \
@@ -924,6 +928,7 @@ class DataEntry():
             , gnark_go_test_time = cls.parse_float_or_none(gnark_go_test_time)
             , gnark_go_timeout = cls.parse_bool_or_none(gnark_go_timeout)
             , gnark_go_ignored_compiler_error = cls.parse_str_or_none(gnark_go_ignored_compiler_error)
+            , noir_inliner_aggressiveness = cls.parse_int_or_none(noir_inliner_aggressiveness)
             , noir_c1_execute = cls.parse_bool_or_none(noir_c1_execute)
             , noir_c1_execute_time = cls.parse_float_or_none(noir_c1_execute_time)
             , noir_c2_execute = cls.parse_bool_or_none(noir_c2_execute)

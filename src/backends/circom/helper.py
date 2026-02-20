@@ -171,6 +171,7 @@ class CircomError(StrEnum):
     CPP_WITNESS_GENERATION_BUILD_ERROR = "CPP witness generation build error"
     UNKNOWN_CPP_WITNESS_GENERATION_ERROR = "unknown CPP witness generation error"
     UNKNOWN_JS_WITNESS_GENERATION_ERROR = "unknown JS witness generation error"
+    SMT_WITNESS_GENERATION_ERROR = "SMT witness generation error"
     DIVERGING_WTNS_GEN_EXIT_STATUS = "diverging witness exit status for JS and CPP"
     DIVERGING_WTNS_GEN_OUTPUT_SIGNALS = "diverging witness output signals for JS and CPP"
     DIVERGING_WTNS_GEN_FILES = "diverging witness file for JS and CPP"
@@ -287,6 +288,15 @@ class CircomManager():
         # write a circuit.txt debug file
         with open(self.unsafe_circuit_txt, 'w') as file_handler:
             file_handler.write(str(circuit))
+
+    def setup_with_source(self, circuit_name: str, source_code: str):
+        self.circuit = Circuit(circuit_name, [], [], [])
+        self.error = None
+        clean_or_create_dir(self.unsafe_project)
+        with open(self.unsafe_circuit_circom, "w") as file_handler:
+            file_handler.write(source_code)
+        with open(self.unsafe_circuit_txt, "w") as file_handler:
+            file_handler.write(source_code)
 
     def update(self, inputs: dict[str, int]):
         stringified_inputs = {k: str(v) for k, v in inputs.items()}
@@ -984,3 +994,85 @@ def run_metamorphic_tests \
         # TODO: compare proof output json files
 
     return circom_result
+
+
+def _as_circom_input(value: int | bool) -> int:
+    if isinstance(value, bool):
+        return 1 if value else 0
+    return value
+
+
+def run_smt_pipeline_tests_from_source(
+    circuit_name: str,
+    circom_source: str,
+    models: list[dict[str, int | bool]],
+    curve: CircomCurve,
+    optimization: CircomOptimization,
+    rng: Random,
+    working_dir: Path,
+    config: Config,
+    online_tuning: OnlineTuning,
+) -> CircomResult:
+    clean_or_create_dir(working_dir)
+    manager = CircomManager(working_dir / "origin", online_tuning)
+    manager.setup_with_source(circuit_name, circom_source)
+    manager.compile(curve, optimization)
+
+    result = CircomResult()
+    result.original_code = circom_source
+    result.transformed_code = circom_source
+
+    compile_iteration = TestIteration()
+    compile_iteration.update(manager, proof_system=None)
+    if manager.is_stop():
+        compile_iteration.error = manager.error
+        result.iterations.append(compile_iteration)
+        return result
+
+    witness_choice = WitnessChoice.BOTH if config.circom.likelihood_cpp_witness_generation > 0 else WitnessChoice.JS_ONLY
+    for model in models:
+        iteration = TestIteration()
+        result.iterations.append(iteration)
+
+        if manager.compile_exec is not None:
+            iteration.update(manager, proof_system=None)
+
+        input_map = {k: _as_circom_input(v) for k, v in model.items()}
+        manager.update(input_map)
+        manager.generate_witness(witness_choice)
+        # SMT oracle is strict: every selected model must produce a valid witness.
+        if not manager.is_witness_generated():
+            iteration.update(manager, proof_system=None)
+            iteration.error = manager.error or CircomError.SMT_WITNESS_GENERATION_ERROR
+            return result
+        if manager.is_stop():
+            iteration.update(manager, proof_system=None)
+            iteration.error = manager.error
+            return result
+
+        if config.circom.likelihood_snark_witness_check > 0:
+            manager.check_witness()
+            if manager.is_stop():
+                iteration.update(manager, proof_system=None)
+                iteration.error = manager.error
+                return result
+
+        # snarkjs prove/verify in this setup is only valid for BN128 PTAU.
+        # For other curves we stop after witness stages.
+        if curve == CircomCurve.BN128:
+            proof_system = rng.choice(list(ProofSystem))
+            manager.prove(proof_system)
+            if manager.is_stop():
+                iteration.update(manager, proof_system=proof_system)
+                iteration.error = manager.error
+                return result
+            manager.verify(proof_system)
+            if manager.is_stop():
+                iteration.update(manager, proof_system=proof_system)
+                iteration.error = manager.error
+                return result
+            iteration.update(manager, proof_system=proof_system)
+        else:
+            iteration.update(manager, proof_system=None)
+
+    return result

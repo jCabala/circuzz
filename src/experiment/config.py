@@ -234,8 +234,7 @@ def load_config_file(path_to_config: Path, language: str) -> Config:
     assert path_to_config.is_file(), \
         f"Unable to load config file at location {path_to_config}"
 
-    with open(path_to_config, "r") as fh:
-        json_obj: dict[str, Any] = json.load(fh)
+    json_obj = _load_json_with_extends(path_to_config)
 
     config_zkp_language = ZKPLanguage.from_str(language)
 
@@ -265,3 +264,54 @@ def load_config_file(path_to_config: Path, language: str) -> Config:
         ir=config_ir,
         experiment=config_experiment,
     )
+
+
+def _merge_dicts(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged: dict[str, Any] = dict(base)
+    for key, value in override.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = _merge_dicts(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _load_json_with_extends(path_to_config: Path, stack: set[Path] | None = None) -> dict[str, Any]:
+    if stack is None:
+        stack = set()
+
+    resolved = path_to_config.resolve()
+    if resolved in stack:
+        chain = " -> ".join(str(p) for p in [*stack, resolved])
+        raise ValueError(f"cyclic config inheritance detected: {chain}")
+    stack.add(resolved)
+
+    with open(path_to_config, "r") as fh:
+        raw_obj: dict[str, Any] = json.load(fh)
+
+    extends = raw_obj.pop("extends", None)
+    if extends is None:
+        stack.remove(resolved)
+        return raw_obj
+
+    base_paths: list[Path]
+    if isinstance(extends, str):
+        base_paths = [Path(extends)]
+    elif isinstance(extends, list) and all(isinstance(item, str) for item in extends):
+        base_paths = [Path(item) for item in extends]
+    else:
+        raise ValueError("'extends' must be a string or list of strings")
+
+    merged_base: dict[str, Any] = {}
+    for base_path in base_paths:
+        resolved_base = base_path if base_path.is_absolute() else path_to_config.parent / base_path
+        if not resolved_base.is_file():
+            raise ValueError(
+                f"unable to locate inherited config '{resolved_base}' "
+                f"(referenced from '{path_to_config}')"
+            )
+        parent_obj = _load_json_with_extends(resolved_base, stack)
+        merged_base = _merge_dicts(merged_base, parent_obj)
+
+    stack.remove(resolved)
+    return _merge_dicts(merged_base, raw_obj)
